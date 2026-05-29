@@ -3,7 +3,7 @@ A share is a logical grouping to share with recipients. A share can be shared wi
 
 ## REST APIs
 
-Here are the list of APIs used by Delta Sharing Protocol. All of the REST APIs use [bearer tokens for authorization](https://tools.ietf.org/html/rfc6750). The `{prefix}` of each API is configurable, and servers hosted by different providers may pick up different prefixes.
+Here are the list of APIs to access shares in Open Sharing Protocol. All of the REST APIs use [bearer tokens for authorization](https://tools.ietf.org/html/rfc6750). The `{prefix}` of each API is configurable, and servers hosted by different providers may pick up different prefixes.
 
 ### List Shares
 
