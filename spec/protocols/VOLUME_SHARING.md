@@ -4,7 +4,7 @@ This is a proposal to support volume sharing in the OpenSharing Protocol.
 
 ## Motivation
 
-The [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing) currently supports sharing tables via the Delta Sharing protocol. However, there is no support for sharing unstructured data stored in volumes (directories of files).
+The [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing) currently supports sharing tables via the OpenSharing protocol. However, there is no support for sharing unstructured data stored in volumes (directories of files).
 
 We propose to add volume sharing to the OpenSharing protocol to enable sharing of directory-based storage locations with recipients. Volume sharing allows providers to share unstructured data in the most general way — the protocol is agnostic to the contents of the volume, placing no constraints on the format or structure of the files within it. This allows providers to share access to arbitrary files (e.g., ML model artifacts, agent skills, raw data files, images) without requiring them to be structured as Delta tables.
 
