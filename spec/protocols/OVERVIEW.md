@@ -22,7 +22,7 @@ This document is an overview for the Open Sharing Protocol, which defines the RE
 
 - Share: A share is a logical grouping to share with recipients. A share can be shared with one or multiple recipients. A recipient can access all resources in a share. A share may contain multiple schemas.
 - Schema: A schema is a logical grouping of shared assets, including tables, volumes, models, skills, etc.
-- Table: A table is a [Delta Lake](https://delta.io/) table or a view on top of a Delta Lake table.
+- Table: A table can be of different formats, both [Delta Lake](https://delta.io/) tables and [Iceberg](https://iceberg.apache.org/) tables are supported.
 - Volume: A volume is a directory-based storage locations with related metadata.
 - Recipient: A principal that has a bearer token to access shared assets.
 - Sharing Server: A server that implements this protocol on the server side.
@@ -36,6 +36,7 @@ Field Name | Descrption
 -|-
 shareCredentialsVersion | The file format version of the profile file. This version will be increased whenever non-forward-compatible changes are made to the profile format. When a client is running an unsupported profile file format version, it should show an error message instructing the user to upgrade to a newer version of their client.
 endpoint | The url of the sharing server.
+icebergEndpoint | The url of the sharing server that supports the iceberg table endpoints.
 bearerToken | The [bearer token](https://tools.ietf.org/html/rfc6750) to access the server.
 expirationTime | The expiration time of the bearer token in [ISO 8601 format](https://www.w3.org/TR/NOTE-datetime). This field is optional and if it is not provided, the bearer token can be seen as never expire.
 
@@ -45,6 +46,7 @@ Example:
 {
   "shareCredentialsVersion": 1,
   "endpoint": "https://sharing.opensharing.io/open-sharing/",
+  "icebergEndpoint": "https://sharing.opensharing.io/open-sharing/iceberg/",
   "bearerToken": "<token>",
   "expirationTime": "2021-11-12T00:12:29.0Z"
 }
