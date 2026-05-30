@@ -4,9 +4,9 @@ This is a proposal to support agent skill sharing in the OpenSharing Protocol.
 
 ## Motivation
 
-In addition to existing assets, we propose to add **AgentSkill** as a new asset type in the [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing), following the [AgentSkills specification](https://agentskills.io/specification).
+We propose to add **AgentSkill** as a new asset type in the [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing), following the [AgentSkills specification](https://agentskills.io/specification).
 
-Volume sharing allows providers to share unstructured data in the most general way — the protocol is agnostic to the contents of the volume. Agent skills are a structured, higher-level asset built on top of that foundation. An AgentSkill is a directory of files that an AI agent can load and execute to perform a specific task — for example, processing PDFs, running code reviews, or interacting with external APIs. Sharing skills across organizational boundaries enables agents to leverage capabilities developed by other providers without duplicating effort.
+An AgentSkill is a directory of files that an AI agent can load and execute to perform a specific task — for example, processing PDFs, running code reviews, or interacting with external APIs. Sharing skills across organizational boundaries enables agents to leverage capabilities developed by other providers without duplicating effort.
 
 An AgentSkill follows the [AgentSkills directory structure](https://agentskills.io/specification):
 
@@ -18,7 +18,7 @@ skill-name/
 └── assets/        # Optional: templates, resources
 ```
 
-An AgentSkill is a first-class L3 asset in OpenSharing with its own `storageLocation`. Access to the skill's files is granted via a dedicated `GenerateTemporarySkillCredentials` endpoint scoped to that storage location. This design keeps each skill self-contained and isolates access per skill, consistent with how ML Models are handled.
+An AgentSkill is a first-class asset in OpenSharing with its own `storageLocation`. Access to the skill's files is granted via a dedicated `GenerateTemporarySkillCredentials` endpoint scoped to that storage location. This design keeps each skill self-contained and isolates access per skill.
 
 ## Protocol Changes
 
@@ -41,10 +41,6 @@ An AgentSkill object has the following fields:
 | metadata | Map<String, String> | Arbitrary key-value map for additional properties. | [optional] |
 
 Note: the `name` field must match the directory name at the root of `storageLocation`. It must not start or end with a hyphen and must not contain consecutive hyphens.
-
-Note: the `id` field is optional. If populated, its value should be unique within the share and stay immutable through the skill's lifecycle.
-
-Note: the `shareId` field is optional. If populated, its value should be unique across the sharing server and immutable through the share's lifecycle.
 
 ### List All Skills in a Share
 

@@ -1,6 +1,6 @@
 # Temporary Credential Models
 
-This document defines the temporary credential models used across the OpenSharing protocol. All asset types that support credential-based access (Volumes, Agent Skills, ML Models, etc.) use these shared models.
+This document defines the temporary credential models used across the OpenSharing protocol. All asset types that support credential-based access use these shared models.
 
 Only one of `awsTempCredentials`, `azureUserDelegationSas`, `gcpOauthToken`, or `r2Credentials` should be defined in any credential response. The `expirationTime` field is always required. The API client is advised to cache the credential given this expiration time.
 
