@@ -560,6 +560,8 @@ URL Parameters | **{share}**: The share name to query. It's case-insensitive.<br
 }
 ```
 
+Note: Supported values for `format` are `delta` and `iceberg` for now, which indicates which set of APIs should be used to access the shared table. Can be a list of supported formats separated by comma `,`.
+
 </td>
 </tr>
 </table>
