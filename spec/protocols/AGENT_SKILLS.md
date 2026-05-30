@@ -4,7 +4,7 @@ This is a proposal to support agent skill sharing in the OpenSharing Protocol.
 
 ## Motivation
 
-The [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing) currently supports sharing tables and volumes. We propose to add **AgentSkill** as a new asset type, following the [AgentSkills specification](https://agentskills.io/specification).
+In addition to existing assets, we propose to add **AgentSkill** as a new asset type in the [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing), following the [AgentSkills specification](https://agentskills.io/specification).
 
 Volume sharing allows providers to share unstructured data in the most general way — the protocol is agnostic to the contents of the volume. Agent skills are a structured, higher-level asset built on top of that foundation. An AgentSkill is a directory of files that an AI agent can load and execute to perform a specific task — for example, processing PDFs, running code reviews, or interacting with external APIs. Sharing skills across organizational boundaries enables agents to leverage capabilities developed by other providers without duplicating effort.
 
