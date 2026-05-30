@@ -1,10 +1,10 @@
 # Tables 
-A table is a [Delta Lake](https://delta.io/) table or a view on top of a Delta Lake table.
+A table can be of different formats, both [Delta Lake](https://delta.io/) tables and [Iceberg](https://iceberg.apache.org/) tables are supported.
 
 - [REST APIs](#rest-apis)
     - [List Tables in a Schema](#list-tables-in-a-schema)
     - [List all Tables in a Share](#list-all-tables-in-a-share)
-    - [Get Table](#get-tables)
+    - [Get Table](#get-table)
 
 ## REST APIs
 
@@ -518,3 +518,183 @@ Example:
 }
 ```
 
+### Get Table
+
+This is the API to get the basic info about a table in the share.
+
+HTTP Request | Value
+-|-
+Method | `GET`
+Header | `Authorization: Bearer {token}`
+URL | `{prefix}/shares/{share}/schemas/{schema}/tables/{table}`
+URL Parameters | **{share}**: The share name to query. It's case-insensitive.<br><br>**{schema}**: The schema name to query. It's case-insensitive.<br><br>**{table}**: The table name to query. It's case-insensitive.
+
+<details open>
+<summary><b>200: The table was successfully returned.</b></summary>
+
+<table>
+<tr>
+<th>HTTP Response</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>Header</td>
+<td>
+
+`Content-Type: application/json; charset=utf-8`
+
+</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>
+
+```json
+{
+  "name": "string",
+  "schema": "string",
+  "share": "string",
+  "shareId": "string",
+  "id": "string",
+  "format": "string"
+}
+```
+
+</td>
+</tr>
+</table>
+</details>
+
+<details>
+<summary><b>400: The request is malformed.</b></summary>
+
+<table>
+<tr>
+<th>HTTP Response</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>Header</td>
+<td>
+
+`Content-Type: application/json`
+
+</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>
+
+```json
+{
+  "errorCode": "string",
+  "message": "string"
+}
+```
+
+</td>
+</tr>
+</table>
+</details>
+
+<details>
+<summary><b>401: The request is unauthenticated.</b></summary>
+
+<table>
+<tr>
+<th>HTTP Response</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>Header</td>
+<td>
+
+`Content-Type: application/json`
+
+</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>
+
+```json
+{
+  "errorCode": "string",
+  "message": "string"
+}
+```
+
+</td>
+</tr>
+</table>
+</details>
+
+<details>
+<summary><b>403: The request is forbidden from being fulfilled.</b></summary>
+
+<table>
+<tr>
+<th>HTTP Response</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>Header</td>
+<td>
+
+`Content-Type: application/json`
+
+</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>
+
+```json
+{
+  "errorCode": "string",
+  "message": "string"
+}
+```
+
+</td>
+</tr>
+</table>
+</details>
+
+<details>
+<summary><b>404: The requested resource does not exist.</b></summary>
+
+<table>
+<tr>
+<th>HTTP Response</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>Header</td>
+<td>
+
+`Content-Type: application/json`
+
+</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>
+
+```json
+{
+  "errorCode": "string",
+  "message": "string"
+}
+```
+
+</td>
+</tr>
+</table>
+</details>
+
+### Access Iceberg Tables
+TODO
+
+### Access Delta Tables
+Refer to the [Delta Sharing Protocol](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md) for details on accessing the shared delta tables in different ways.
