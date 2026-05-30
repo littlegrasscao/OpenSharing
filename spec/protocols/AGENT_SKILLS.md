@@ -559,32 +559,4 @@ Only one of `awsTempCredentials`, `azureUserDelegationSas`, `gcpOauthToken`, or 
 
 ## Credential Models
 
-Only one of `awsTempCredentials`, `azureUserDelegationSas`, `gcpOauthToken`, or `r2Credentials` should be defined. Their definitions follow the same models as [Volume Sharing](VOLUME_SHARING.md).
-
-#### AwsCredentials
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| accessKeyId | String | The access key ID that identifies the temporary credentials. | [required] |
-| secretAccessKey | String | The secret access key that can be used to sign AWS API requests. | [required] |
-| sessionToken | String | The token that users must pass to AWS API to use the temporary credentials. | [required] |
-
-#### AzureUserDelegationSAS
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| sasToken | String | Azure SAS Token granting read access to the skill's storage location. | [required] |
-
-#### GcpOauthToken
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| oauthToken | String | GCP OAuth token granting read access to the skill's storage location. | [required] |
-
-#### R2Credentials
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| accessKeyId | String | The access key ID that identifies the temporary credentials. | [required] |
-| secretAccessKey | String | The secret access key. | [required] |
-| sessionToken | String | The session token. | [required] |
+The credential models (`TemporaryCredentials`, `AwsCredentials`, `AzureUserDelegationSAS`, `GcpOauthToken`, `R2Credentials`) are defined in [CREDENTIALS.md](CREDENTIALS.md) and shared across all asset types.
