@@ -696,7 +696,7 @@ Note: Supported values for `format` are `delta` and `iceberg` for now, which ind
 </details>
 
 ### Access Iceberg Tables
-TODO
+OpenSharing provides an implementation of the Iceberg REST catalog API specification. Refer to the [Iceberg REST API spec](https://github.com/apache/iceberg/blob/main/open-api/rest-catalog-open-api.yaml) for details on using this REST API.
 
 ### Access Delta Tables
 Refer to the [Delta Sharing Protocol](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md) for details on accessing the shared delta tables in different ways.
