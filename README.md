@@ -14,7 +14,7 @@ OpenSharing is a simple REST protocol for secure, real-time sharing of data and 
 
 OpenSharing covers a wide range of data and AI assets organizations share today:
 
-- **Structured data** — Delta Lake, Apache Iceberg, and Parquet tables, with snapshot reads, incremental change feeds, time travel, and predicate pushdown
+- **Structured data** — Delta Lake, Apache Iceberg, and Parquet tables
 - **Unstructured data** — documents, media, embeddings, raw data, and any file-based asset
 - **ML models** — trained artifacts, weights, and evaluation metadata
 - **Agent skills** — reusable AI capabilities that other agents can discover and invoke
@@ -46,8 +46,8 @@ Share
 
 | Asset Type | Status | Description |
 |---|---|---|
-| **Table** | Specified | Structured data in [Delta Lake](https://delta.io/), [Apache Iceberg](https://iceberg.apache.org/), and Parquet formats. Supports snapshot reads, incremental CDC, time travel, and predicate pushdown. |
-| **Volume** | Specified | Unstructured or semi-structured file collections — documents, media, embeddings, raw data. Access via scoped temporary cloud credentials. |
+| **Table** | Specified | Structured data in [Delta Lake](https://delta.io/), [Apache Iceberg](https://iceberg.apache.org/), and Parquet formats. |
+| **Volume** | Specified | A directory of files of any format — documents, media, embeddings, raw data. Access via scoped temporary cloud credentials. |
 | **AgentSkill** | Specified | Reusable AI agent capabilities following the [AgentSkills specification](https://agentskills.io/specification). Each skill is a self-contained asset with its own storage location and scoped credentials. |
 | **Model** | Specified | ML model artifacts with version metadata, run provenance, and credential-vended access to artifact storage. |
 
