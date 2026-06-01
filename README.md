@@ -2,7 +2,7 @@
 
 **The open standard for sharing data and AI assets across any platform, cloud, or organizational boundary.**
 
-OpenSharing is the open-source protocol for sharing structured data, unstructured data, AI models, and agent skills — across any cloud, any vendor, and any format.
+OpenSharing is the open-source protocol for sharing structured data, unstructured data, AI models, agent skills, and agents — across any cloud, any vendor, and any format.
 
 > **Note:** This repository contains the OpenSharing specification and roadmap. We are publishing this as a community proposal and actively seeking feedback on the protocol design, asset type coverage, and roadmap priorities.
 
@@ -10,14 +10,15 @@ OpenSharing is the open-source protocol for sharing structured data, unstructure
 
 ## Why OpenSharing
 
-OpenSharing is a simple REST protocol for secure, real-time sharing of data and AI assets stored in the cloud. Using zero-copy sharing, assets stay in place — a provider shares access to a table, file collection, model, or agent skill, and a recipient connects directly through Spark, Pandas, Tableau, or any compatible system, without deploying a specific platform first.
+OpenSharing is a simple REST protocol for secure, real-time sharing of data and AI assets stored in the cloud. Using zero-copy sharing, assets stay in place — a provider shares access to a table, file collection, model, agent skill, or agent service, and a recipient connects directly through Spark, Pandas, Tableau, or any compatible system, without deploying a specific platform first.
 
 OpenSharing covers a wide range of data and AI assets organizations share today:
 
 - **Structured data** — Delta Lake, Apache Iceberg, and Parquet tables
 - **Unstructured data** — documents, media, embeddings, raw data, and any file-based asset
 - **ML models** — trained artifacts, weights, and evaluation metadata
-- **Agent skills** — reusable AI capabilities that other agents can discover and invoke
+- **Agent skills** — reusable AI capabilities that other agents can download and run locally
+- **Agents** — live agent services invoked remotely. The sharing server issues a short-lived invocation token and endpoint; the recipient calls the agent directly.
 
 ---
 
@@ -33,7 +34,8 @@ Share
        ├── Table
        ├── Volume
        ├── AgentSkill
-       └── Model
+       ├── Model
+       └── Agent
 ```
 
 **Share** — A named, access-controlled collection of assets granted to one or more recipients. A single credential grants access to everything within a share.
@@ -48,8 +50,9 @@ Share
 |---|---|---|
 | **Table** | Specified | Structured data in [Delta Lake](https://delta.io/), [Apache Iceberg](https://iceberg.apache.org/), and Parquet formats. |
 | **Volume** | Specified | A directory of files of any format — documents, media, embeddings, raw data. Access via scoped temporary cloud credentials. |
-| **AgentSkill** | Specified | Reusable AI agent capabilities following the [AgentSkills specification](https://agentskills.io/specification). Each skill is a self-contained asset with its own storage location and scoped credentials. |
+| **AgentSkill** | Specified | Reusable AI capabilities a recipient downloads and runs locally inside their own agent. Each skill is a self-contained asset with its own storage location and scoped credentials. |
 | **Model** | Specified | ML model artifacts with version metadata, run provenance, and credential-vended access to artifact storage. |
+| **Agent** | Proposed | A live, callable agent service. The sharing server issues a short-lived invocation token and endpoint; the recipient calls the agent directly using the declared invocation protocol. |
 
 ---
 
@@ -57,16 +60,19 @@ Share
 
 ### For Providers
 
-A provider creates a **share**, adds assets (tables, volumes, models, or skills), and issues credentials to recipients. Assets are never copied — recipients access them directly from the provider's cloud storage via short-lived, scoped credentials.
+A provider creates a **share**, adds assets, and grants access to recipients. Assets are never copied — recipients access them directly using short-lived credentials issued by the sharing server.
 
 ```
 POST /shares/{share}/schemas/{schema}/tables/{table}/temporary-table-credentials
 → returns AWS STS / Azure SAS / GCP OAuth / R2 token scoped to that table's storage location
+
+POST /shares/{share}/schemas/{schema}/agents/{agent}/temporary-agent-credentials
+→ returns a short-lived bearer token and endpoint for calling the agent directly
 ```
 
 ### For Recipients
 
-A recipient authenticates with a bearer token and uses standard list/get/read APIs to discover and consume assets. The same client can consume tables as DataFrames, download volume files, load model artifacts, or enumerate available agent skills — all through a unified protocol.
+A recipient authenticates with a bearer token and uses standard list/get/read APIs to discover and consume assets — all through a unified protocol.
 
 ```
 GET /shares
@@ -77,18 +83,22 @@ GET /shares/{share}/schemas/{schema}/volumes
 GET /shares/{share}/schemas/{schema}/skills
 GET /shares/{share}/all-skills
 GET /shares/{share}/schemas/{schema}/models
+GET /shares/{share}/schemas/{schema}/agents
+GET /shares/{share}/all-agents
+POST /shares/{share}/schemas/{schema}/agents/{agent}/temporary-agent-credentials
 ```
 
 ### Zero-Copy Credential Vending
 
-OpenSharing uses **credential vending** for secure, zero-copy access: the sharing server issues temporary, scoped cloud credentials (AWS STS, Azure SAS, GCP OAuth, Cloudflare R2) that expire automatically. Recipients read data directly from cloud storage — the sharing server is never in the data path, and data is never duplicated.
+OpenSharing uses **credential vending** for secure, zero-copy access: the sharing server issues temporary, scoped credentials that expire automatically. Recipients access assets directly — the sharing server is never in the data path, and data is never duplicated.
 
-Each asset type has its own credential endpoint scoped precisely to that asset's storage location:
+Each asset type has its own credential endpoint:
 
-- `POST .../tables/{table}/temporary-table-credentials`
-- `POST .../volumes/{volume}/temporary-volume-credentials`
-- `POST .../models/{model}/versions/{version}/temporary-model-credentials`
-- `POST .../skills/{skill}/temporary-skill-credentials`
+- `POST .../tables/{table}/temporary-table-credentials` → scoped cloud storage credentials (AWS STS, Azure SAS, GCP OAuth, Cloudflare R2)
+- `POST .../volumes/{volume}/temporary-volume-credentials` → scoped cloud storage credentials
+- `POST .../models/{model}/versions/{version}/temporary-model-credentials` → scoped cloud storage credentials
+- `POST .../skills/{skill}/temporary-skill-credentials` → scoped cloud storage credentials
+- `POST .../agents/{agent}/temporary-agent-credentials` → short-lived bearer token and endpoint for calling the agent directly
 
 ---
 
@@ -105,6 +115,7 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 | [`spec/protocols/VOLUME_SHARING.md`](./spec/protocols/VOLUME_SHARING.md) | Volume asset type specification |
 | [`spec/protocols/AGENT_SKILLS.md`](./spec/protocols/AGENT_SKILLS.md) | AgentSkill asset type specification (in review) |
 | [`spec/protocols/MODEL_SHARING.md`](./spec/protocols/MODEL_SHARING.md) | Model asset type specification (proposed) |
+| [`spec/protocols/AGENT_SHARING.md`](./spec/protocols/AGENT_SHARING.md) | Agent asset type specification (proposed) |
 | [`spec/protocols/CREDENTIALS.md`](./spec/protocols/CREDENTIALS.md) | Shared credential model definitions |
 
 ---
