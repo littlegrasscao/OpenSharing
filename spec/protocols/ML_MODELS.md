@@ -20,7 +20,6 @@ A RegisteredModel object has the following fields:
 | shareId | String | A unique, immutable identifier for the share across the sharing server. Recommended format: UUID. | [optional] |
 | id | String | A unique, immutable identifier for the model within the share. Recommended format: UUID. | [optional] |
 | comment | String | Description of the model. | [optional] |
-| storageLocation | String | Root cloud storage path under which all version artifacts are stored. | [optional] |
 
 ### ModelVersion Object
 
@@ -82,8 +81,7 @@ Query Parameters | **maxResults** (type: Int32, optional): The maximum number of
       "share": "string",
       "shareId": "string",
       "id": "string",
-      "comment": "string",
-      "storageLocation": "string"
+      "comment": "string"
     }
   ],
   "nextPageToken": "string"
@@ -288,8 +286,7 @@ URL Parameters | **{share}**: The share name to query. It's case-insensitive.<br
   "share": "string",
   "shareId": "string",
   "id": "string",
-  "comment": "string",
-  "storageLocation": "string"
+  "comment": "string"
 }
 ```
 
