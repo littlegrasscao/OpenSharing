@@ -4,9 +4,7 @@ This is a proposal to support volume sharing in the OpenSharing Protocol.
 
 ## Motivation
 
-The [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing) currently supports sharing tables via the OpenSharing protocol. However, there is no support for sharing unstructured data stored in volumes (directories of files).
-
-We propose to add volume sharing to the OpenSharing protocol to enable sharing of directory-based storage locations with recipients. Volume sharing allows providers to share unstructured data in the most general way — the protocol is agnostic to the contents of the volume, placing no constraints on the format or structure of the files within it. This allows providers to share access to arbitrary files (e.g., ML model artifacts, agent skills, raw data files, images) without requiring them to be structured as Delta tables.
+We propose to add **Volume** as a new asset type in the [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing) to enable sharing of directory-based storage locations with recipients. Volume sharing allows providers to share unstructured data in the most general way — the protocol is agnostic to the contents of the volume, placing no constraints on the format or structure of the files within it. This allows providers to share access to arbitrary files (e.g., ML model artifacts, agent skills, raw data files, images) without requiring them to be structured as Delta tables.
 
 The credential model follows the same pattern as [directory-based table access](https://github.com/delta-io/delta-sharing/issues/782): the server issues temporary cloud credentials (STS tokens, SAS tokens, or GCP OAuth tokens) scoped to the volume's storage location, and the recipient uses those credentials to access files directly via the cloud storage API.
 
@@ -28,10 +26,6 @@ A volume object has the following fields:
 | storageLocation | String | The root storage location of the volume (e.g., `s3://bucket/path/`). | [required] |
 
 Note: object names (`name`, `schema`, `share`) must not exceed 255 characters and must not contain restricted characters.
-
-Note: the `id` field is optional. If populated, its value should be unique within the share and stay immutable through the volume's lifecycle.
-
-Note: the `shareId` field is optional. If populated, its value should be unique across the sharing server and immutable through the volume's lifecycle.
 
 ### List All Volumes in a Share
 
@@ -774,42 +768,4 @@ Only one of `awsTempCredentials`, `azureUserDelegationSas`, `gcpOauthToken`, or 
 
 ## Credential Models
 
-#### TemporaryCredentials
-
-Only one of `awsTempCredentials`, `azureUserDelegationSas`, `gcpOauthToken`, or `r2Credentials` should be defined.
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| awsTempCredentials | AwsCredentials | | [optional] |
-| azureUserDelegationSas | AzureUserDelegationSAS | | [optional] |
-| gcpOauthToken | GcpOauthToken | | [optional] |
-| r2Credentials | R2Credentials | | [optional] |
-| expirationTime | Long | Server time when the credential will expire, in epoch milliseconds. The API client is advised to cache the credential given this expiration time. | [required] |
-
-#### AwsCredentials
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| accessKeyId | String | The access key ID that identifies the temporary credentials. | [required] |
-| secretAccessKey | String | The secret access key that can be used to sign AWS API requests. | [required] |
-| sessionToken | String | The token that users must pass to AWS API to use the temporary credentials. | [required] |
-
-#### AzureUserDelegationSAS
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| sasToken | String | Azure SAS Token granting read access to the volume's storage location. | [required] |
-
-#### GcpOauthToken
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| oauthToken | String | GCP OAuth token granting read access to the volume's storage location. | [required] |
-
-#### R2Credentials
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| accessKeyId | String | The access key ID that identifies the temporary credentials. | [required] |
-| secretAccessKey | String | The secret access key. | [required] |
-| sessionToken | String | The session token. | [required] |
+The credential models (`TemporaryCredentials`, `AwsCredentials`, `AzureUserDelegationSAS`, `GcpOauthToken`, `R2Credentials`) are defined in [CREDENTIALS.md](CREDENTIALS.md) and shared across all asset types.
