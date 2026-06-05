@@ -20,6 +20,8 @@ For example, a `Revenue` glossary page can define the formula, currency, grain, 
 
 This proposal introduces a new asset type (`GlossaryPage`) and four new endpoints. Unlike the existing Delta Sharing asset types (tables, volumes, etc.), glossary pages are addressed by **domain** rather than **schema** — see [Open Questions](#open-questions) for the rationale.
 
+Glossary content is catalog metadata, not storage-backed data, so the sharing server returns it directly. There is no credential-vending step. (Storage-backed extensions — e.g. attached PDFs — are noted under [Future Considerations](#future-considerations).)
+
 ### GlossaryPage Object
 
 A glossary page object has the following fields:
@@ -40,7 +42,7 @@ Note: the `id` field is optional. If populated, its value should be unique withi
 
 Note: the `shareId` field is optional. If populated, its value should be unique across the sharing server and immutable through the share's lifecycle.
 
-Note: the `description` field is optional and should not exceed 65536 characters. It is intentionally short — one or two sentences — so recipients can scan a domain's worth of pages without fetching credentials for each. The full page content — markdown body, references, source assets — is accessible via the [Generate Temporary Glossary Page Credentials](#generate-temporary-glossary-page-credentials) endpoint.
+Note: the `description` field is optional and should not exceed 65536 characters. It is intentionally short — one or two sentences — so recipients can scan a domain's worth of pages cheaply. The full page content — markdown body, references, source assets — is accessible via the [Get Glossary Page Details](#get-glossary-page-details) endpoint.
 
 Note: the `synonyms` field is optional and each synonym should not exceed 255 characters. Recipients are expected to apply synonym matching with the same case-folding rules they use for `name`.
 
@@ -430,7 +432,7 @@ Returns only the pages in the `finance` domain (`ARR`, `Customer` from the previ
 
 ### Get Glossary Page
 
-Get the metadata for a specific glossary page, including its short description and synonyms. To access the full page content — markdown body, references, source assets — use [Generate Temporary Glossary Page Credentials](#generate-temporary-glossary-page-credentials).
+Get the metadata for a specific glossary page, including its short description and synonyms. To access the full page content — markdown body, references, source assets — use [Get Glossary Page Details](#get-glossary-page-details).
 
 HTTP Request | Value
 -|-
@@ -622,53 +624,19 @@ Example:
 
 ---
 
-### Generate Temporary Glossary Page Credentials
+### Get Glossary Page Details
 
-Generate a short-lived access token and endpoint for reading the full content of a shared glossary page. The recipient uses these credentials to fetch the markdown body, outbound references, and source-asset list — directly from the sharing server.
+Get the full content of a glossary page — markdown body, outbound references, and source-asset list. Returned directly by the sharing server using the same bearer token used for discovery endpoints.
 
-> **Note:** Unlike storage-backed asset types (Table, Volume), glossary credential vending issues a short-lived API access token rather than cloud storage credentials. Glossary content is catalog metadata, not a storage-backed asset. The endpoint in the response is served by the sharing server infrastructure, which enforces access control and rate limits on content retrieval.
-
-<table>
-<tr>
-<th>HTTP Request</th>
-<th>Value</th>
-</tr>
-<tr>
-<td>Method</td>
-<td>
-
-`POST`
-</td>
-</tr>
-<tr>
-<td>Headers</td>
-<td>
-
-`Authorization: Bearer {token}`
-</td>
-</tr>
-<tr>
-<td>URL</td>
-<td>
-
-`{prefix}/shares/{share}/domains/{domain}/glossary-pages/{glossaryPage}/temporary-glossary-page-credentials`
-</td>
-</tr>
-<tr>
-<td>URL Parameters</td>
-<td>
-
-**{share}**: The share name to query. It's case-insensitive.
-
-**{domain}**: The domain name to query. It's case-insensitive.
-
-**{glossaryPage}**: The glossary page name to query. It's case-insensitive.
-</td>
-</tr>
-</table>
+HTTP Request | Value
+-|-
+Method | `GET`
+Header | `Authorization: Bearer {token}`
+URL | `{prefix}/shares/{share}/domains/{domain}/glossary-pages/{glossaryPage}/details`
+URL Parameters | **{share}**: The share name to query. It's case-insensitive.<br><br>**{domain}**: The domain name to query. It's case-insensitive.<br><br>**{glossaryPage}**: The glossary page name to query. It's case-insensitive.
 
 <details open>
-<summary><b>200: The temporary credentials were successfully returned.</b></summary>
+<summary><b>200: The glossary page content was successfully returned.</b></summary>
 
 <table>
 <tr>
@@ -689,13 +657,17 @@ Generate a short-lived access token and endpoint for reading the full content of
 
 ```json
 {
-  "endpoint": "string",
-  "bearerToken": "string",
-  "expirationTime": 0
+  "name": "string",
+  "id": "string",
+  "description": "string",
+  "synonyms": ["string"],
+  "body": "string",
+  "references": [{"asset": {}, "description": "string"}],
+  "sourceAssets": [{"asset": {}, "description": "string"}]
 }
 ```
 
-See [GlossaryPageAccessCredentials](#glossarypageaccesscredentials).
+See [GlossaryPageDetails](#glossarypagedetails).
 
 </td>
 </tr>
@@ -866,28 +838,16 @@ See [GlossaryPageAccessCredentials](#glossarypageaccesscredentials).
 
 The full lifecycle for a recipient discovering and reading the `ARR` glossary page in the `finance_share`:
 
-**Step 1.** Recipient lists pages in the `finance` domain.
+**Step 1.** Recipient lists pages in the `finance` domain to find what's available.
 
 `GET {prefix}/shares/finance_share/domains/finance/glossary-pages`
 
-Returns the discovery metadata (no body, no references) — enough for the recipient or an LLM to decide which pages are relevant.
+Returns the discovery metadata for each page (name, domain, description, synonyms — no body, no references). Cheap enough to scan 100+ pages without fetching content for each. An LLM can pick out which pages are relevant from descriptions alone.
 
-**Step 2.** Recipient generates credentials for the `ARR` page.
+**Step 2.** Recipient fetches the details for the `ARR` page using the same bearer token.
 
-`POST {prefix}/shares/finance_share/domains/finance/glossary-pages/ARR/temporary-glossary-page-credentials`
-
-```json
-{
-  "endpoint": "https://sharing.example.com/glossary-pages/9f1b3c2d-4e5a-6f7b-8c9d-0e1f2a3b4c5d",
-  "bearerToken": "gpt_7f3a2b1c...",
-  "expirationTime": 1780400000000
-}
-```
-
-**Step 3.** Recipient fetches the full content from the endpoint with the bearer token.
-
-`GET https://sharing.example.com/glossary-pages/9f1b3c2d-4e5a-6f7b-8c9d-0e1f2a3b4c5d`<br>
-`Authorization: Bearer gpt_7f3a2b1c...`
+`GET {prefix}/shares/finance_share/domains/finance/glossary-pages/ARR/details`<br>
+`Authorization: Bearer {token}`
 
 ```json
 {
@@ -951,19 +911,11 @@ The recipient now has the full business definition, the formula, the source tabl
 
 ---
 
-## Credential Models
+## Object Models
 
-### GlossaryPageAccessCredentials
+### GlossaryPageDetails
 
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| endpoint | String | The URL of the glossary page content endpoint. The recipient calls `GET {endpoint}` with `Authorization: Bearer {bearerToken}` to retrieve the full page content. | [required] |
-| bearerToken | String | A short-lived token the recipient includes as `Authorization: Bearer {bearerToken}` when calling the endpoint. | [required] |
-| expirationTime | Long | Server time when the `bearerToken` expires, in epoch milliseconds. | [required] |
-
-### GlossaryPage Content
-
-The response returned by `GET {endpoint}` using the credentials above:
+The response returned by [Get Glossary Page Details](#get-glossary-page-details):
 
 | Name | Type | Description | Notes |
 |---|---|---|---|
@@ -1016,6 +968,18 @@ A typed oneof. Exactly one of the four variants must be set in a given reference
 | Name | Type | Description | Notes |
 |---|---|---|---|
 | id | String | The `id` of the referenced glossary page. The reference is resolved within the same share. Cross-share references are not currently supported — see [Open Questions](#open-questions). | [required] |
+
+---
+
+## Future Considerations
+
+**Blob attachments (PDFs, images, etc.).** Glossary content in v1 is text-only — the `body` is markdown and any non-text assets must be referenced via `externalUrl`. Future versions may want to support first-class blob attachments owned by the glossary page (e.g. a Finance Policy PDF that explains the ARR calculation in detail). The natural extension follows the established Delta Sharing pattern for storage-backed assets:
+
+- Add a `storageLocation` field (or attachment list) to `GlossaryPageDetails` pointing at cloud-storage objects.
+- Add a `POST .../temporary-storage-credentials` endpoint that vends short-lived cloud-storage credentials (S3 presigned URL, ADLS SAS token, etc.) for the attached blob.
+- The recipient uses those credentials to fetch the blob directly from cloud storage, exactly as they do for table data files today.
+
+This is intentionally out of scope for v1, since the page body itself doesn't need credential vending and adding blob support before there's a concrete use case would over-design the protocol. The pattern is called out here so that when the use case materializes, the extension shape is predictable.
 
 ---
 
