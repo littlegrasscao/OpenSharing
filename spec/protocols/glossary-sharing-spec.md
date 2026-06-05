@@ -32,13 +32,13 @@ A glossary page object has the following fields:
 | domain | String | The business domain the page belongs to (e.g. `finance`, `sales`, `marketing`). Replaces the `schema` segment used by other Delta Sharing asset types. | [required] |
 | share | String | The share the page belongs to. | [required] |
 | shareId | String | A unique, immutable identifier for the share across the sharing server. Recommended format: UUID. | [optional] |
-| id | String | A unique, immutable identifier for the page within the share. Recommended format: UUID. | [optional] |
+| id | String | A unique, immutable identifier for the page within the share. Recommended format: UUID. Required so the page can be the target of a [GlossaryPageReference](#glossarypagereference). | [required] |
 | description | String | A short, human- and LLM-readable description of what this page defines. Intended for discovery — recipients use this to understand what a page is before requesting full access. Providers are encouraged to generate this server-side from the page body so it stays in sync. | [optional] |
 | synonyms | Array\<String\> | Alternate names for the concept, used by recipients for keyword expansion (e.g. `["MRR × 12", "annual subscription revenue"]` for `ARR`). | [optional] |
 
 Note: object names (`name`, `domain`, `share`) must not exceed 255 characters and must not contain restricted characters. They are case-insensitive when used in URL paths.
 
-Note: the `id` field is optional. If populated, its value should be unique within the share and stay immutable through the page's lifecycle. Page-to-page references (see [GlossaryPageReference](#glossarypagereference)) resolve by `id` when present.
+Note: the `id` value must be unique within the share and stay immutable through the page's lifecycle. Page-to-page references (see [GlossaryPageReference](#glossarypagereference)) resolve by `id`, so every page carries one.
 
 Note: the `shareId` field is optional. If populated, its value should be unique across the sharing server and immutable through the share's lifecycle.
 
@@ -422,6 +422,38 @@ Same response format as [List All Glossary Pages in a Share](#list-all-glossary-
 </table>
 </details>
 
+<details>
+<summary><b>500: The request is not handled correctly due to a server error.</b></summary>
+
+<table>
+<tr>
+<th>HTTP Response</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>Header</td>
+<td>
+
+`Content-Type: application/json`
+
+</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>
+
+```json
+{
+  "errorCode": "string",
+  "message": "string"
+}
+```
+
+</td>
+</tr>
+</table>
+</details>
+
 Example:
 
 `GET {prefix}/shares/finance_share/domains/finance/glossary-pages`
@@ -576,6 +608,38 @@ URL Parameters | **{share}**: The share name to query. It's case-insensitive.<br
 
 <details>
 <summary><b>404: The requested resource does not exist.</b></summary>
+
+<table>
+<tr>
+<th>HTTP Response</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>Header</td>
+<td>
+
+`Content-Type: application/json`
+
+</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>
+
+```json
+{
+  "errorCode": "string",
+  "message": "string"
+}
+```
+
+</td>
+</tr>
+</table>
+</details>
+
+<details>
+<summary><b>500: The request is not handled correctly due to a server error.</b></summary>
 
 <table>
 <tr>
@@ -920,7 +984,7 @@ The response returned by [Get Glossary Page Details](#get-glossary-page-details)
 | Name | Type | Description | Notes |
 |---|---|---|---|
 | name | String | The name of the glossary page. | [required] |
-| id | String | The immutable identifier of the page. | [optional] |
+| id | String | The immutable identifier of the page. | [required] |
 | description | String | The short description (same value as returned by the discovery endpoints). | [optional] |
 | synonyms | Array\<String\> | Alternate names (same value as returned by the discovery endpoints). | [optional] |
 | body | String | The full page content in markdown. Providers should include business rules, formulas, known exclusions, grain, and any other context an AI agent or analyst needs to correctly interpret and use this definition. | [required] |
