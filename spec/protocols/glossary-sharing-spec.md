@@ -1,6 +1,6 @@
 # Glossary Sharing
 
-> **Status: Community Proposal.** This specification is at an early stage and the design is not final. Key open questions include whether to break from Delta Sharing's `share/schema/asset` URL convention (this proposal does, for product-fit reasons), how account-level glossary content maps onto a share's namespace, and the portability of workspace-object references. We are publishing this to invite community input before finalizing. Please open an issue or discussion with feedback.
+> **Status: Community Proposal.** This specification is at an early stage and the design is not final. Key open questions include whether to break from OpenSharing's `share/schema/asset` URL convention (this proposal does, for product-fit reasons), how account-level glossary content maps onto a share's namespace, and how recipients interpret vendor-specific data assets. We are publishing this to invite community input before finalizing. Please open an issue or discussion with feedback.
 
 ## Motivation
 
@@ -18,7 +18,7 @@ For example, a `Revenue` glossary page can define the formula, currency, grain, 
 
 ## Protocol Changes
 
-This proposal introduces a new asset type (`GlossaryPage`) and four new endpoints. Unlike the existing Delta Sharing asset types (tables, volumes, etc.), glossary pages are addressed by **domain** rather than **schema** — see [Open Questions](#open-questions) for the rationale.
+This proposal introduces a new asset type (`GlossaryPage`) and four new endpoints. Unlike the existing OpenSharing asset types (tables, volumes, etc.), glossary pages are addressed by **domain** rather than **schema** — see [Open Questions](#open-questions) for the rationale.
 
 Glossary content is catalog metadata, not storage-backed data, so the sharing server returns it directly. There is no credential-vending step. (Storage-backed extensions — e.g. attached PDFs — are noted under [Future Considerations](#future-considerations).)
 
@@ -29,7 +29,7 @@ A glossary page object has the following fields:
 | Name | Type | Description | Notes |
 |---|---|---|---|
 | name | String | The name of the glossary page. Unique within `(share, domain)`. | [required] |
-| domain | String | The business domain the page belongs to (e.g. `finance`, `sales`, `marketing`). Replaces the `schema` segment used by other Delta Sharing asset types. | [required] |
+| domain | String | The business domain the page belongs to (e.g. `finance`, `sales`, `marketing`). Replaces the `schema` segment used by other OpenSharing asset types. | [required] |
 | share | String | The share the page belongs to. | [required] |
 | shareId | String | A unique, immutable identifier for the share across the sharing server. Recommended format: UUID. | [optional] |
 | id | String | A unique, immutable identifier for the page within the share. Recommended format: UUID. Required so the page can be the target of a [GlossaryPageReference](#glossarypagereference). | [required] |
@@ -923,10 +923,10 @@ Returns the discovery metadata for each page (name, domain, description, synonym
   "references": [
     {
       "asset": {
-        "unityCatalog": {
-          "metastoreId": "11111111-2222-3333-4444-555555555555",
-          "fullName": "sales.contracts.subscriptions",
-          "kind": "TABLE"
+        "dataAsset": {
+          "name": "sales.contracts.subscriptions",
+          "type": "table",
+          "properties": { "metastoreId": "11111111-2222-3333-4444-555555555555" }
         }
       },
       "description": "Source table for active subscription contract state and MRR."
@@ -949,20 +949,20 @@ Returns the discovery metadata for each page (name, domain, description, synonym
   "sourceAssets": [
     {
       "asset": {
-        "unityCatalog": {
-          "metastoreId": "11111111-2222-3333-4444-555555555555",
-          "fullName": "sales.contracts.subscriptions",
-          "kind": "TABLE"
+        "dataAsset": {
+          "name": "sales.contracts.subscriptions",
+          "type": "table",
+          "properties": { "metastoreId": "11111111-2222-3333-4444-555555555555" }
         }
       },
       "description": "Primary source for the ARR formula."
     },
     {
       "asset": {
-        "unityCatalog": {
-          "metastoreId": "11111111-2222-3333-4444-555555555555",
-          "fullName": "sales.contracts.contract_amendments",
-          "kind": "TABLE"
+        "dataAsset": {
+          "name": "sales.contracts.contract_amendments",
+          "type": "table",
+          "properties": { "metastoreId": "11111111-2222-3333-4444-555555555555" }
         }
       },
       "description": "Used for mid-period MRR adjustments before computing the forward 12-month value."
@@ -1004,30 +1004,23 @@ Note: the `body` field should not exceed 1048576 characters (1 MiB). Media (imag
 
 ### Asset
 
-A typed oneof. Exactly one of the four variants must be set in a given reference.
+A typed oneof. Exactly one of the three variants must be set in a given reference.
 
 | Variant | Type | Description |
 |---|---|---|
-| unityCatalog | UnityCatalogAsset | A Unity Catalog securable (table, volume, function, model). |
-| workspaceObject | WorkspaceObjectAsset | A workspace-scoped object (notebook, dashboard, query, data room). Vendor-specific to Databricks workspaces; recipients without a Databricks workspace may treat these as opaque references. See [Open Questions](#open-questions). |
+| dataAsset | DataAsset | A catalog-neutral reference to a data asset (table, volume, function, model, etc.). |
 | glossaryPage | GlossaryPageAsset | A reference to another glossary page, resolved by `id`. |
 | externalUrl | String | An arbitrary external URL — typically a policy document, dashboard, or external reference. |
 
-#### UnityCatalogAsset
+Note: `dataAsset` is intentionally catalog-neutral — the protocol does not enumerate vendor-specific asset types. Recipients must be aware of the asset `type`s their providers emit and how to interpret them. A provider on Unity Catalog, for example, might set `type: "table"` and carry attributes like a metastore ID or fully-qualified name in `properties`; a provider on a different catalog reuses the same shape with its own conventions.
+
+#### DataAsset
 
 | Name | Type | Description | Notes |
 |---|---|---|---|
-| metastoreId | String | The metastore ID of the catalog the asset lives in. | [required] |
-| fullName | String | The three-level name `catalog.schema.table`. | [required] |
-| kind | String | One of `TABLE`, `VOLUME`, `FUNCTION`, `MODEL`. | [required] |
-
-#### WorkspaceObjectAsset
-
-| Name | Type | Description | Notes |
-|---|---|---|---|
-| workspaceId | String | The workspace ID. | [required] |
-| objectId | String | The workspace object ID. | [required] |
-| kind | String | One of `NOTEBOOK`, `DASHBOARD`, `QUERY`, `DATA_ROOM`. | [required] |
+| name | String | A catalog-relative identifier for the asset (e.g. a fully-qualified table name). Interpreted by the recipient according to its own catalog. | [required] |
+| type | String | A free-form asset type the recipient interprets (e.g. `table`, `volume`, `function`, `model`). | [optional] |
+| properties | Map\<String, String\> | Optional vendor-specific attributes (e.g. a metastore ID, workspace ID, or object ID) that a recipient on the matching platform can use to resolve the asset precisely. | [optional] |
 
 #### GlossaryPageAsset
 
@@ -1039,7 +1032,7 @@ A typed oneof. Exactly one of the four variants must be set in a given reference
 
 ## Future Considerations
 
-**Blob attachments (PDFs, images, etc.).** Glossary content in v1 is text-only — the `body` is markdown and any non-text assets must be referenced via `externalUrl`. Future versions may want to support first-class blob attachments owned by the glossary page (e.g. a Finance Policy PDF that explains the ARR calculation in detail). The natural extension follows the established Delta Sharing pattern for storage-backed assets:
+**Blob attachments (PDFs, images, etc.).** Glossary content in v1 is text-only — the `body` is markdown and any non-text assets must be referenced via `externalUrl`. Future versions may want to support first-class blob attachments owned by the glossary page (e.g. a Finance Policy PDF that explains the ARR calculation in detail). The natural extension follows the established OpenSharing pattern for storage-backed assets:
 
 - Add a `storageLocation` field (or attachment list) to `GlossaryPageDetails` pointing at cloud-storage objects.
 - Add a `POST .../temporary-storage-credentials` endpoint that vends short-lived cloud-storage credentials (S3 presigned URL, ADLS SAS token, etc.) for the attached blob.
@@ -1053,22 +1046,19 @@ This is intentionally out of scope for v1, since the page body itself doesn't ne
 
 This specification is a community proposal. The following design questions are unresolved and we are actively seeking input:
 
-**1. URL convention divergence from Delta Sharing**
+**1. URL convention divergence from other OpenSharing asset types**
 
-Existing Delta Sharing asset types are addressed as `/shares/{share}/schemas/{schema}/<asset-type>/{name}`. This proposal uses `/shares/{share}/domains/{domain}/glossary-pages/{name}` because glossary pages are organized by **business domain** (e.g. `finance`, `sales`), not by database schema. "Schema" carries a database connotation that fits poorly for narrative business content.
+Other OpenSharing asset types are addressed as `/shares/{share}/schemas/{schema}/<asset-type>/{name}`. This proposal uses `/shares/{share}/domains/{domain}/glossary-pages/{name}` because glossary pages are organized by **business domain** (e.g. `finance`, `sales`), not by database schema. "Schema" carries a database connotation that fits poorly for narrative business content.
 
-The trade-off is a break from URL uniformity: SDK authors building generic Delta Sharing clients need to special-case the path segment for this asset type. We invite community feedback on whether the product-fit gain justifies the consistency cost, or whether `schema` should be retained for path uniformity (with `domain` as an additional property on the object).
+The trade-off is a break from URL uniformity: SDK authors building generic OpenSharing clients need to special-case the path segment for this asset type. We invite community feedback on whether the product-fit gain justifies the consistency cost, or whether `schema` should be retained for path uniformity (with `domain` as an additional property on the object).
 
-**2. WorkspaceObjectAsset portability**
+**2. Interpreting vendor-specific data assets**
 
-`WorkspaceObjectAsset` references a workspace-scoped object (notebook, dashboard, query, data room). These are Databricks-specific concepts and may not be meaningful to recipients on other platforms. We invite community feedback on whether this variant should:
-- Stay as a first-class variant in the protocol, with non-Databricks recipients treating it as opaque metadata
-- Be marked as a vendor extension (e.g. under an `extensions` field), keeping the core protocol platform-neutral
-- Be excluded from the v1 protocol and proposed as a separate platform-specific extension
+The `dataAsset` variant is intentionally catalog-neutral: `type` is free-form and `properties` carries vendor-specific attributes the recipient interprets. The protocol does not enumerate asset types or mandate how recipients resolve them — recipients must be aware of the asset types their providers emit and how to interpret them. We invite community feedback on whether the protocol should define a small set of common `type` values (e.g. `table`, `volume`, `function`, `model`) for interoperability, or leave the vocabulary entirely to providers and recipients. Concrete examples for Unity Catalog will be linked here once GlossaryPages land in UC OSS.
 
 **3. Account-level vs metastore-level sharing**
 
-The Delta Sharing share/schema model implicitly assumes metastore- or workspace-scoped data. Glossary pages may be account-scoped — defined once and applicable across all metastores in an account. How does an account-level glossary page map onto a share's domain namespace? Likely a share groups one or more account-level domains, but the protocol does not currently constrain how providers organize this. We invite community feedback on whether explicit guidance or constraints are needed.
+The OpenSharing share/schema model implicitly assumes metastore- or workspace-scoped data. Glossary pages may be account-scoped — defined once and applicable across all metastores in an account. How does an account-level glossary page map onto a share's domain namespace? Likely a share groups one or more account-level domains, but the protocol does not currently constrain how providers organize this. We invite community feedback on whether explicit guidance or constraints are needed.
 
 **4. Synonym semantics**
 
