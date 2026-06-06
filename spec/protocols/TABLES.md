@@ -699,12 +699,12 @@ Note: Supported values for `format` are `delta` and `iceberg` for now, which ind
 OpenSharing provides an implementation of the Iceberg REST catalog API specification. Refer to the [Iceberg REST API spec](https://github.com/apache/iceberg/blob/main/open-api/rest-catalog-open-api.yaml) for details on using this REST API.
 
 Here is a list of REST APIs supported:
-- getConfig, GET /v1/config
-- listNamespaces, GET /v1/{prefix}/shares/{share}/namespaces
-- loadNamespaceMetadata, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}
-- listTables, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables
-- loadTable, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}
-- reportMetrics, POST /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}/metrics
+- <b>getConfig</b>, GET /v1/config
+- <b>listNamespaces</b>, GET /v1/{prefix}/shares/{share}/namespaces
+- <b>loadNamespaceMetadata</b>, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}
+- <b>listTables</b>, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables
+- <b>loadTable</b>, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}
+- <b>reportMetrics</b>, POST /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}/metrics
 
 ### Access Delta Tables
 Refer to the [Delta Sharing Protocol](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md) for details on accessing the shared delta tables in different ways.
