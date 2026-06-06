@@ -5,6 +5,8 @@ A table can be of different formats, both [Delta Lake](https://delta.io/) tables
     - [List Tables in a Schema](#list-tables-in-a-schema)
     - [List all Tables in a Share](#list-all-tables-in-a-share)
     - [Get Table](#get-table)
+- [Access Iceberg Tables](#access-iceberg-tables)
+- [Access Delta Tables](#access-delta-tables)
 
 ## REST APIs
 
@@ -695,7 +697,7 @@ Note: Supported values for `format` are `delta` and `iceberg` for now, which ind
 </table>
 </details>
 
-### Access Iceberg Tables
+## Access Iceberg Tables
 OpenSharing provides an implementation of the Iceberg REST catalog API specification. Refer to the [Iceberg REST API spec](https://github.com/apache/iceberg/blob/main/open-api/rest-catalog-open-api.yaml) for details on using this REST API.
 
 Here is a list of REST APIs supported:
@@ -706,5 +708,5 @@ Here is a list of REST APIs supported:
 - <b>loadTable</b>, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}
 - <b>reportMetrics</b>, POST /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}/metrics
 
-### Access Delta Tables
+## Access Delta Tables
 Refer to the [Delta Sharing Protocol](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md) for details on accessing the shared delta tables in different ways.
