@@ -34,9 +34,9 @@ A glossary page object has the following fields:
 | shareId | String | A unique, immutable identifier for the share across the sharing server. Recommended format: UUID. | [optional] |
 | id | String | A unique, immutable identifier for the page within the share. Recommended format: UUID. Required so the page can be the target of a [GlossaryPageReference](#glossarypagereference). | [required] |
 | description | String | A short, human- and LLM-readable description of what this page defines. Intended for discovery — recipients use this to understand what a page is before requesting full access. Providers are encouraged to generate this server-side from the page body so it stays in sync. | [optional] |
-| synonyms | Array\<String\> | Alternate names for the concept, used by recipients for keyword expansion (e.g. `["MRR × 12", "annual subscription revenue"]` for `ARR`). | [optional] |
+| synonyms | Array\<String\> | Alternate names for the concept, used by recipients for keyword expansion (e.g. `["annual recurring revenue", "annual subscription revenue"]` for `ARR`). | [optional] |
 
-Note: object names (`name`, `domain`, `share`) must not exceed 255 characters and must not contain restricted characters. They are case-insensitive when used in URL paths.
+Note: object names (`name`, `domain`, `share`) must not exceed 255 characters and must not contain restricted characters. They are case-insensitive when used in URL paths, and the `(share, domain)` uniqueness of `name` is likewise enforced case-insensitively — `ARR` and `arr` cannot coexist in the same domain.
 
 Note: the `id` value must be unique within the share and stay immutable through the page's lifecycle. Page-to-page references (see [GlossaryPageReference](#glossarypagereference)) resolve by `id`, so every page carries one.
 
@@ -248,7 +248,7 @@ Example:
       "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
       "id": "9f1b3c2d-4e5a-6f7b-8c9d-0e1f2a3b4c5d",
       "description": "Annual Recurring Revenue — the 12-month forward value of all active subscription contracts, excluding one-time fees and refunds.",
-      "synonyms": ["MRR × 12", "annual subscription revenue"]
+      "synonyms": ["annual recurring revenue", "annual subscription revenue"]
     },
     {
       "name": "Customer",
@@ -682,7 +682,7 @@ Example:
   "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
   "id": "9f1b3c2d-4e5a-6f7b-8c9d-0e1f2a3b4c5d",
   "description": "Annual Recurring Revenue — the 12-month forward value of all active subscription contracts, excluding one-time fees and refunds.",
-  "synonyms": ["MRR × 12", "annual subscription revenue"]
+  "synonyms": ["annual recurring revenue", "annual subscription revenue"]
 }
 ```
 
@@ -918,7 +918,7 @@ Returns the discovery metadata for each page (name, domain, description, synonym
   "name": "ARR",
   "id": "9f1b3c2d-4e5a-6f7b-8c9d-0e1f2a3b4c5d",
   "description": "Annual Recurring Revenue — the 12-month forward value of all active subscription contracts, excluding one-time fees and refunds.",
-  "synonyms": ["MRR × 12", "annual subscription revenue"],
+  "synonyms": ["annual recurring revenue", "annual subscription revenue"],
   "body": "# ARR\n\nAnnual Recurring Revenue.\n\n**Formula:** `SUM(subscriptions.mrr) * 12 WHERE subscriptions.state IN ('active', 'in_grace_period')`\n\n**Currency:** USD\n\n**Grain:** One row per active subscription contract\n\n**Excludes:**\n- One-time fees and professional services\n- Refunded subscriptions\n- Test accounts (`subscriptions.is_test = true`)\n- Contracts in `trial` or `cancelled` state\n\n**Recognition window:** Forward-looking 12 months from the measurement date.",
   "references": [
     {
@@ -972,6 +972,8 @@ Returns the discovery metadata for each page (name, domain, description, synonym
 ```
 
 The recipient now has the full business definition, the formula, the source tables, and the page-to-page reference to `Customer` — enough context for an analyst to interpret an ARR query result correctly, or for an AI agent to generate a correct SQL query.
+
+Note that `sales.contracts.subscriptions` appears in both `references` and `sourceAssets`. The two arrays answer different questions: `references` is everything the page points at (other pages, policy docs, related tables), while `sourceAssets` is the narrower provenance — the assets the definition was actually derived from. An asset that is both pointed at and a source of truth legitimately appears in both.
 
 ---
 
