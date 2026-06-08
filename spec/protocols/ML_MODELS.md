@@ -4,7 +4,7 @@ This is a proposal to support ML model sharing in the OpenSharing Protocol.
 
 ## Motivation
 
-We propose to add **RegisteredModel** and **ModelVersion** as new asset types in the [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing). A `RegisteredModel` is a named, versioned ML artifact. Each `ModelVersion` corresponds to a specific version of that model and has its own `storageLocation` containing the model artifacts. Recipients can list models and their versions, resolve aliases, and generate temporary credentials to access a specific version's files directly via the cloud storage API.
+We propose to add **RegisteredModel** and **ModelVersion** as new asset types in the [OpenSharing protocol](https://github.com/OpenSharing-IO/OpenSharing). A `RegisteredModel` is a named, versioned ML artifact. Each `ModelVersion` corresponds to a specific version of that model and has its own `storageLocation` containing the model artifacts. Recipients can list models and their versions, and generate temporary credentials to access a specific version's files directly via the cloud storage API.
 
 ## Protocol Changes
 
@@ -537,90 +537,6 @@ URL Parameters | **{share}**: The share name to query. It's case-insensitive.<br
 </td>
 </tr>
 </table>
-</details>
-
-<details>
-<summary><b>400: The request is malformed.</b></summary>
-
-<table>
-<tr><th>HTTP Response</th><th>Value</th></tr>
-<tr><td>Header</td><td>`Content-Type: application/json`</td></tr>
-<tr><td>Body</td><td>
-
-```json
-{ "errorCode": "string", "message": "string" }
-```
-
-</td></tr>
-</table>
-</details>
-
-<details>
-<summary><b>401: The request is unauthenticated.</b></summary>
-
-<table>
-<tr><th>HTTP Response</th><th>Value</th></tr>
-<tr><td>Header</td><td>`Content-Type: application/json`</td></tr>
-<tr><td>Body</td><td>
-
-```json
-{ "errorCode": "string", "message": "string" }
-```
-
-</td></tr>
-</table>
-</details>
-
-<details>
-<summary><b>403: The request is forbidden from being fulfilled.</b></summary>
-
-<table>
-<tr><th>HTTP Response</th><th>Value</th></tr>
-<tr><td>Header</td><td>`Content-Type: application/json`</td></tr>
-<tr><td>Body</td><td>
-
-```json
-{ "errorCode": "string", "message": "string" }
-```
-
-</td></tr>
-</table>
-</details>
-
-<details>
-<summary><b>404: The requested resource does not exist.</b></summary>
-
-<table>
-<tr><th>HTTP Response</th><th>Value</th></tr>
-<tr><td>Header</td><td>`Content-Type: application/json`</td></tr>
-<tr><td>Body</td><td>
-
-```json
-{ "errorCode": "string", "message": "string" }
-```
-
-</td></tr>
-</table>
-</details>
-
----
-
-### Get Model Version by Alias
-
-Resolve an alias to the model version it currently points to. Returns the full `ModelVersion` object for the aliased version.
-
-HTTP Request | Value
--|-
-Method | `GET`
-Header | `Authorization: Bearer {token}`
-URL | `{prefix}/shares/{share}/schemas/{schema}/models/{model}/aliases/{alias}`
-URL Parameters | **{share}**: The share name to query. It's case-insensitive.<br><br>**{schema}**: The schema name to query. It's case-insensitive.<br><br>**{model}**: The model name to query. It's case-insensitive.<br><br>**{alias}**: The alias to resolve (e.g., `champion`, `production`). It's case-insensitive.
-
-<details open>
-<summary><b>200: The aliased model version was successfully returned.</b></summary>
-
-Same response format as [Get Model Version](#get-model-version).
-
 </details>
 
 <details>
