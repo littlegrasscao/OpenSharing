@@ -121,6 +121,194 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 
 ---
 
+## Connectors
+
+OpenSharing is a superset of Delta Sharing. All existing Delta Sharing clients are compatible with OpenSharing.
+
+> **Note:** All connectors currently support Table sharing. Support for Volumes, Models, and Agent Skills is in progress.
+
+### Python Connector
+
+The Python connector allows you to load shared tables as pandas DataFrames or Apache Spark DataFrames. Install via pip:
+
+```bash
+pip install delta-sharing
+```
+
+See the [Python connector documentation](https://github.com/delta-io/delta-sharing#python-connector) for usage.
+
+### Apache Spark Connector
+
+The Apache Spark connector supports SQL, Python, Java, Scala, and R, and integrates with Spark Structured Streaming for incremental data processing.
+
+See the [Apache Spark connector documentation](https://github.com/delta-io/delta-sharing#apache-spark-connector) for usage.
+
+### Community Connectors
+
+<table>
+<tr>
+<th>Connector</th>
+<th>Link</th>
+<th>Status</th>
+<th>Supported Features</th>
+</tr>
+<tr>
+<td>Apache Spark</td>
+<td>Databricks owned</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot<br>QueryTableChanges(CDF)<br>Time Travel Queries<br>Delta Format Queries<br>Limit and Predicate Pushdown</td>
+</tr>
+<tr>
+<td>pandas</td>
+<td>Databricks owned</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot<br>QueryTableChanges(CDF)<br>Time Travel Queries</td>
+</tr>
+<tr>
+<td>Tableau</td>
+<td>Databricks owned</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Power BI</td>
+<td>Databricks owned</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Snowflake</td>
+<td>Snowflake owned</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Oracle</td>
+<td>Oracle owned</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>DuckDB</td>
+<td>
+
+[duckdb/duckdb](https://github.com/duckdb/duckdb)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Clojure</td>
+<td>
+
+[amperity/delta-sharing-client-clj](https://github.com/amperity/delta-sharing-client-clj)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot<br>QueryTableChanges(CDF)<br>Time Travel Queries<br>Query Changes between Versions<br>Delta Format Queries<br>Limit and Predicate Pushdown</td>
+</tr>
+<tr>
+<td>Node.js</td>
+<td>
+
+[goodwillpunning/nodejs-sharing-client](https://github.com/goodwillpunning/nodejs-sharing-client)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Java</td>
+<td>
+
+[databrickslabs/delta-sharing-java-connector](https://github.com/databrickslabs/delta-sharing-java-connector)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Arcuate</td>
+<td>
+
+[databrickslabs/arcuate](https://github.com/databrickslabs/arcuate)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Rust</td>
+<td>
+
+[r3stl355/delta-sharing-rust-client](https://github.com/r3stl355/delta-sharing-rust-client)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Go</td>
+<td>
+
+[magpierre/delta-sharing](https://github.com/magpierre/delta-sharing/tree/golangdev/golang/delta_sharing_go)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>C++</td>
+<td>
+
+[magpierre/delta-sharing](https://github.com/magpierre/delta-sharing/tree/cppdev/cpp/DeltaSharingClient)
+</td>
+<td>Released</td>
+<td>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>R</td>
+<td>
+
+[zacdav-db/delta-sharing-r](https://github.com/zacdav-db/delta-sharing-r)
+</td>
+<td>Released</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Google Spreadsheet</td>
+<td>
+
+[delta-incubator/delta-sharing-connectors](https://github.com/delta-incubator/delta-sharing-connectors/tree/main/google_workspace_add_on)
+</td>
+<td>Beta</td>
+<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
+</tr>
+<tr>
+<td>Airflow</td>
+<td>
+
+[apache/airflow](https://github.com/apache/airflow/pull/22692)
+</td>
+<td>Un-released</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>Excel</td>
+<td>
+
+[https://www.exponam.com/solutions/](https://www.exponam.com/solutions/)
+</td>
+<td>Limited release</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>Lakehouse Sharing</td>
+<td>
+
+[rajagurunath/lakehouse-sharing](https://github.com/rajagurunath/lakehouse-sharing)
+</td>
+<td>Preview</td>
+<td>Delta Lake and Iceberg formats</td>
+</tr>
+</table>
+
+---
+
 ## Community and Governance
 
 OpenSharing is being submitted as a sandbox project under the [Linux Foundation AI & Data](https://lfaidata.foundation/) foundation. The protocol is developed in the open, and we welcome contributions, feedback, and implementations from across the data and AI ecosystem.
