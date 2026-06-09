@@ -8,7 +8,7 @@ This document describes the proposed direction for the OpenSharing protocol. It 
 
 ## Initial Release
 
-OpenSharing launches with five asset types covering a wide range of data and AI assets organizations share today.
+OpenSharing launches with four specified asset types and two community proposals.
 
 ### Tables
 
@@ -32,27 +32,23 @@ See [spec](./spec/protocols/AGENT_SKILLS.md).
 
 ML model artifacts with version metadata, run provenance, and credential-vended access to artifact storage. `Model` and `ModelVersion` are first-class asset types — each version has its own `storageLocation` and tracks status from registration to ready.
 
-### Agents
+See [spec](./spec/protocols/ML_MODELS.md).
 
-Live, callable agent services. Unlike `AgentSkill` assets (files the recipient downloads and runs locally), a shared agent is a service the provider operates. The sharing server issues a short-lived invocation token and endpoint; the recipient calls the agent directly using the declared invocation protocol.
+### Agent (Community Proposal)
+
+Live, callable agent services. Unlike `AgentSkill` assets, a shared agent is a service the provider operates — the recipient invokes it and receives results without accessing the underlying storage or model. This specification is at an early stage; see the spec for open design questions.
 
 See [spec](./spec/protocols/AGENT_SHARING.md).
+
+### Page / Glossary (Community Proposal)
+
+A named business entity, metric, dimension, or term — with a markdown definition and relationships to other pages in the same schema. Pages give recipients the business context needed to correctly interpret shared data assets. This specification is at an early stage; see the spec for open design questions.
+
+See [spec](./spec/protocols/glossary-sharing-spec.md).
 
 ---
 
 ## Future Roadmap
-
-### Semantic Sharing
-
-- **What is "Semantic"** — Per-asset annotations that describe business meaning: what fields represent, how to interpret values, and metric definitions (KPIs, aggregation rules, computed measures).
-- **What we plan to do** — Add an `ai_context` metadata field to every asset type and introduce a `Metric` asset type for sharing business logic alongside data.
-- **Why it matters** — An AI consuming a shared table can read its structure but not its intent. Without semantic metadata, it has no way to know that `amt` is a revenue figure in USD, that `status=2` means "completed," or how to aggregate a metric correctly — and will guess wrong.
-
-### Ontology Sharing
-
-- **What it "Ontology"** — A graph of canonical business concepts and relationships — entities like `Customer`, `Order`, `Product` and how they connect — decoupled from any physical schema.
-- **What we plan to do** — Introduce an `Ontology` asset type that providers can share alongside their data assets, declaring entities, relationships, and semantic mappings to physical fields.
-- **Why it matters** — Even with well-annotated individual assets, an AI can't reason across them without a shared concept layer. It can't determine which tables to join, whether `orders.cust_id` and `users.id` are the same entity, or whether two providers use "customer" to mean the same thing.
 
 ### Eval Dataset & Benchmark Sharing
 
