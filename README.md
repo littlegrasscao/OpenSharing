@@ -121,9 +121,29 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 
 ---
 
-## Compatible Clients
+## Connectors
 
-OpenSharing is a superset of Delta Sharing. All existing Delta Sharing clients are compatible with OpenSharing out of the box:
+OpenSharing is a superset of Delta Sharing. All existing Delta Sharing clients are compatible with OpenSharing.
+
+> **Note:** All connectors currently support Table sharing. Support for Volumes, Models, and Agent Skills is in progress.
+
+### Python Connector
+
+The Python connector allows you to load shared tables as pandas DataFrames or Apache Spark DataFrames. Install via pip:
+
+```bash
+pip install delta-sharing
+```
+
+See the [Python connector documentation](https://github.com/delta-io/delta-sharing#python-connector) for usage.
+
+### Apache Spark Connector
+
+The Apache Spark connector supports SQL, Python, Java, Scala, and R, and integrates with Spark Structured Streaming for incremental data processing.
+
+See the [Apache Spark connector documentation](https://github.com/delta-io/delta-sharing#apache-spark-connector) for usage.
+
+### Community Connectors
 
 <table>
 <tr>
