@@ -8,7 +8,7 @@ This document describes the proposed direction for the OpenSharing protocol. It 
 
 ## Initial Release
 
-OpenSharing launches with four asset types covering a wide range of data and AI assets organizations share today.
+OpenSharing launches with five asset types covering a wide range of data and AI assets organizations share today.
 
 ### Tables
 
@@ -32,15 +32,15 @@ See [spec](./spec/protocols/AGENT_SKILLS.md).
 
 ML model artifacts with version metadata, run provenance, and credential-vended access to artifact storage. `Model` and `ModelVersion` are first-class asset types — each version has its own `storageLocation` and tracks status from registration to ready.
 
+### Agents
+
+Live, callable agent services. Unlike `AgentSkill` assets (files the recipient downloads and runs locally), a shared agent is a service the provider operates. The sharing server issues a short-lived invocation token and endpoint; the recipient calls the agent directly using the declared invocation protocol.
+
+See [spec](./spec/protocols/AGENT_SHARING.md).
+
 ---
 
 ## Future Roadmap
-
-### Agent Sharing
-
-- **What is "Agent"** — Callable agent services: complete AI agents that take a goal and act on it autonomously, as opposed to file-based agent skills that a local agent loads and runs itself.
-- **What we plan to do** — Extend OpenSharing to support sharing complete agents as callable services, with standard protocols for discovery, invocation, and cross-organizational trust.
-- **Why it matters** — Organizations are building specialized agents for specific domains; sharing them across boundaries avoids rebuilding the same capability independently on every side.
 
 ### Semantic Sharing
 
