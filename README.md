@@ -123,7 +123,7 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 
 ## Compatible Clients
 
-Any client that implements the OpenSharing protocol can consume shared assets. The following clients are compatible today:
+OpenSharing is a superset of Delta Sharing. All existing Delta Sharing clients are compatible with OpenSharing out of the box:
 
 Apache Spark · pandas · Tableau · Power BI · Snowflake · Oracle · DuckDB · Rust · Go · Java · Node.js
 
