@@ -2,25 +2,20 @@
 
 **The open sharing protocol for the agentic era.**
 
-OpenSharing is the open-source sharing protocol for sharing structured data, unstructured data, AI models, AI agents, agent skills, and more — across any platform, any vendor, and any format.
-
-
 ---
 
 ## Why OpenSharing
 
-OpenSharing is a simple REST protocol for secure, real-time sharing of data and AI assets. Using zero-copy sharing, assets stay in place — a provider shares access to an asset such as a table, file collection, model, agent, agent skill, and more – and a recipient connects directly through Spark, Pandas, Tableau, or any compatible system, without deploying a specific platform first.
+Sharing data and AI assets across organizations has no single standard today. Tables, files, models, and agent skills each require different mechanisms — often a custom integration per partner, per asset type.
 
-OpenSharing covers a wide range of data and AI assets organizations share today:
+OpenSharing defines one protocol for all of them: the same discovery API, credential vending model, and access controls across tables, volumes, ML models, and agent skills. Any compliant client can consume any asset type without format-specific or platform-specific code.
 
-- **Structured data** — open table formats including Delta Lake and Apache Iceberg, accessible to any client via Delta Sharing or Iceberg REST Catalog APIs
-- **Unstructured data** — documents, media, embeddings, raw data, and any file-based asset
-- **ML models** — trained artifacts, weights, and evaluation metadata
-- **Agent skills** — reusable AI capabilities that other agents can discover and invoke
-- **Agents** (community proposal) — live, callable agent services that recipients can invoke across organizational boundaries
-- **Glossary (Page)** (community proposal) — named definitions of entities, metrics, and terms shared alongside data assets to provide context to AI and humans
+Four properties across all asset types that are important for the open agentic era:
 
-OpenSharing also works with on-premises and private-cloud storage. Organizations that must keep data on-premises — for data sovereignty, regulatory compliance, or data gravity — can participate in the sharing ecosystem without moving data. The following storage providers have built native OpenSharing support: **Everpure**, **MinIO**, and **Qumulo**, with **Cohesity**, **Commvault**, **Hewlett Packard Enterprise**, **NetApp**, **Nutanix**, **Rubrik**, and **VAST Data** coming soon.
+- **Open standard** — Apache 2.0, governed by the Linux Foundation. Any compliant server or client is valid — no required SDK or platform.
+- **AI-native** — covers the full range of assets organizations share today, from structured tables to models and agent skills, with more on the roadmap.
+- **Zero-copy** — assets stay in the provider's storage. The sharing server vends temporary, scoped credentials; recipients read directly from the source.
+- **Works where data lives** — works with cloud storage like S3, ADLS, GCS, R2, and on-premises environments. Organizations that can't move data can still share it.
 
 ---
 
