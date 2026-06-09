@@ -174,7 +174,7 @@ See the [Apache Spark connector documentation](https://github.com/delta-io/delta
 <td>Snowflake</td>
 <td>
 
-[Snowflake Docs](https://docs.databricks.com/aws/en/delta-sharing/read-data-open)
+[Snowflake Docs](https://docs.snowflake.com/en/user-guide/tables-iceberg-configure-catalog-integration-delta-sharing)
 </td>
 <td>Released</td>
 <td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
