@@ -28,7 +28,7 @@ An agent object has the following fields:
 | shareId | String | A unique, immutable identifier for the share across the sharing server. Recommended format: UUID. | [optional] |
 | id | String | A unique, immutable identifier for the agent within the share. Recommended format: UUID. | [optional] |
 | description | String | A human- and LLM-readable description of what this agent does, what problems it solves, and what inputs it expects. Providers should write this as if describing the agent to another AI system deciding whether to invoke it. | [required] |
-| invocationProtocol | String | The protocol used to invoke this agent once credentials have been obtained. One of: `mcp`, `a2a`, `openai`, `rest`. See [Invocation Protocols](#invocation-protocols). | [required] |
+| invocationProtocol | String | The protocol used to invoke this agent once credentials have been obtained. One of: `mcp`, `a2a`, `openai`, `anthropic`, `rest`. See [Invocation Protocols](#invocation-protocols). | [required] |
 | capabilities | Array\<String\> | Capability identifiers declaring what this agent can do (e.g., `sql_query`, `document_search`, `code_execution`). Intended for programmatic discovery and routing. | [optional] |
 | inputSchema | Object | JSON Schema describing the expected input payload. | [optional] |
 
@@ -624,6 +624,8 @@ Example:
 
 Generate a short-lived invocation token and endpoint for calling a shared agent. The recipient uses these credentials to call the agent directly using the declared `invocationProtocol`.
 
+Note: implementations should ensure the returned `endpoint` routes through a governed proxy or gateway rather than directly to the raw agent backend. This preserves governance enforcement, cost tracking, and attribution on the provider side.
+
 <table>
 <tr>
 <th>HTTP Request</th>
@@ -872,7 +874,9 @@ The `invocationProtocol` field declares how the recipient should call the agent 
 
 **`openai`** — The agent exposes an OpenAI-compatible chat completions endpoint. Call `POST {endpoint}/v1/chat/completions` with `bearerToken` as the bearer token.
 
-**`rest`** — A minimal REST baseline: `POST {endpoint}/invoke` with `Authorization: Bearer {bearerToken}` and a JSON body containing `{ "input": <string or object>, "sessionId": <string|null> }`. The response is `{ "output": <string or object>, "sessionId": <string|null> }`. Implementations may expose richer session-based APIs (e.g. separate session creation and message endpoints with streaming support); recipients should consult the agent's own documentation for the full interface.
+**`anthropic`** — The agent exposes an Anthropic-compatible messages endpoint. Call `POST {endpoint}/v1/messages` with `bearerToken` as the bearer token. Adopted by Anthropic, Amazon Bedrock, DeepSeek, and LiteLLM.
+
+**`rest`** — A minimal REST baseline intended as a fallback when no other protocol applies. Call `POST {endpoint}/invoke` with `Authorization: Bearer {bearerToken}` and a JSON body containing `{ "input": <string or object>, "sessionId": <string|null> }`. The response is `{ "output": <string or object>, "sessionId": <string|null> }`. Providers requiring streaming, tool use, or richer session semantics should declare `mcp`, `a2a`, `openai`, or `anthropic` instead.
 
 ---
 
