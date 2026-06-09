@@ -10,9 +10,9 @@
 
 ## Why OpenSharing
 
-Sharing data and AI assets across organizations has no single standard today. Tables, files, models, and agent skills each require different mechanisms — often a custom integration per partner, per asset type.
+Enterprises across all industries need to collaborate with external organizations on Data and AI assets to derive joint value. Examples include a retailer collaborating with their suppliers on supply chain optimization, a life sciences company collaborating with healthcare providers on clinical trials, a financial data provider providing data and AI assets to their client banks for risk management, or an enterprise accessing its own assets across business units and platforms. Today, this process often requires custom point-to-point integrations, manual asset copies and transfers, and overall a high level of friction.
 
-OpenSharing defines one protocol for all of them: the same discovery API, credential vending model, and access controls across tables, volumes, ML models, and agent skills. Any compliant client can consume any asset type without format-specific or platform-specific code.
+OpenSharing defines a cross-platform, vendor-neutral protocol for secure zero-copy sharing of Data and AI assets. Customers can use a consistent set of discovery API, credential vending model, and access controls across tables, volumes, ML models, and agent skills. Any compliant client on any platform can consume any asset type without format-specific or platform-specific code - breaking down silos and enabling open collaboration. 
 
 Four properties across all asset types that are important for the open agentic era:
 
@@ -36,8 +36,8 @@ Share
        ├── Volume
        ├── AgentSkill
        ├── Model
-       ├── Agent
-       └── Page
+       ├── Agent (community proposal)
+       └── Page (community proposal)
 ```
 
 **Share** — A named, access-controlled collection of assets granted to one or more recipients. A single credential grants access to everything within a share.
