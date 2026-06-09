@@ -143,7 +143,7 @@ The Apache Spark connector supports SQL, Python, Java, Scala, and R, and integra
 
 See the [Apache Spark connector documentation](https://github.com/delta-io/delta-sharing#apache-spark-connector) for usage.
 
-### Community Connectors
+### Ecosystem Connectors
 
 <table>
 <tr>
@@ -153,38 +153,38 @@ See the [Apache Spark connector documentation](https://github.com/delta-io/delta
 <th>Supported Features</th>
 </tr>
 <tr>
-<td>Apache Spark</td>
-<td>Databricks owned</td>
-<td>Released</td>
-<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot<br>QueryTableChanges(CDF)<br>Time Travel Queries<br>Delta Format Queries<br>Limit and Predicate Pushdown</td>
-</tr>
-<tr>
-<td>pandas</td>
-<td>Databricks owned</td>
-<td>Released</td>
-<td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot<br>QueryTableChanges(CDF)<br>Time Travel Queries</td>
-</tr>
-<tr>
 <td>Tableau</td>
-<td>Databricks owned</td>
+<td>
+
+[Tableau Exchange](https://exchange.tableau.com/en-us/products/1019)
+</td>
 <td>Released</td>
 <td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
 </tr>
 <tr>
 <td>Power BI</td>
-<td>Databricks owned</td>
+<td>
+
+[Microsoft Learn](https://learn.microsoft.com/en-us/power-query/connectors/delta-sharing)
+</td>
 <td>Released</td>
 <td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
 </tr>
 <tr>
 <td>Snowflake</td>
-<td>Snowflake owned</td>
+<td>
+
+[Snowflake Docs](https://docs.databricks.com/aws/en/delta-sharing/read-data-open)
+</td>
 <td>Released</td>
 <td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
 </tr>
 <tr>
 <td>Oracle</td>
-<td>Oracle owned</td>
+<td>
+
+[Oracle Docs](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/adp-consume-share.html)
+</td>
 <td>Released</td>
 <td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
 </tr>
@@ -192,7 +192,7 @@ See the [Apache Spark connector documentation](https://github.com/delta-io/delta
 <td>DuckDB</td>
 <td>
 
-[duckdb/duckdb](https://github.com/duckdb/duckdb)
+[duck_delta_share](https://duckdb.org/community_extensions/extensions/duck_delta_share)
 </td>
 <td>Released</td>
 <td>QueryTableVersion<br>QueryTableMetadata<br>QueryTableLatestSnapshot</td>
