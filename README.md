@@ -108,7 +108,7 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 | [`spec/protocols/AGENT_SKILLS.md`](./spec/protocols/AGENT_SKILLS.md) | AgentSkill asset type specification |
 | [`spec/protocols/ML_MODELS.md`](./spec/protocols/ML_MODELS.md) | Model asset type specification |
 | [`spec/protocols/AGENTS.md`](./spec/protocols/AGENTS.md) | Agent asset type specification (community proposal) |
-| [`spec/protocols/glossary-sharing-spec.md`](./spec/protocols/glossary-sharing-spec.md) | Page asset type specification (community proposal) |
+| [`spec/protocols/GLOSSARY.md`](./spec/protocols/GLOSSARY.md) | Page asset type specification (community proposal) |
 | [`spec/protocols/CREDENTIALS.md`](./spec/protocols/CREDENTIALS.md) | Shared credential model definitions |
 
 ---
