@@ -121,6 +121,14 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 
 ---
 
+## Compatible Clients
+
+Any client that implements the OpenSharing protocol can consume shared assets. The following clients are compatible today:
+
+Apache Spark · pandas · Tableau · Power BI · Snowflake · Oracle · DuckDB · Rust · Go · Java · Node.js
+
+---
+
 ## Community and Governance
 
 OpenSharing is being submitted as a sandbox project under the [Linux Foundation AI & Data](https://lfaidata.foundation/) foundation. The protocol is developed in the open, and we welcome contributions, feedback, and implementations from across the data and AI ecosystem.
