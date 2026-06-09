@@ -125,7 +125,7 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 
 OpenSharing is a superset of Delta Sharing. All existing Delta Sharing clients are compatible with OpenSharing out of the box:
 
-Apache Spark · pandas · Tableau · Power BI · Snowflake · Oracle · DuckDB · Rust · Go · Java · Node.js
+Apache Spark · pandas · Tableau · Power BI · Snowflake · Oracle · DuckDB · Java · Node.js · Rust · Go · C++ · R · Clojure · Airflow · Excel · Google Spreadsheet · Lakehouse Sharing
 
 ---
 
