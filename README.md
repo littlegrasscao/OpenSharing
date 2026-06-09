@@ -68,7 +68,7 @@ POST /shares/{share}/schemas/{schema}/tables/{table}/temporary-table-credentials
 
 ### For Recipients
 
-A recipient authenticates with a bearer token and uses standard list/get/read APIs to discover and consume assets. The same client can consume tables as DataFrames, download volume files, load model artifacts, or enumerate available agent skills — all through a unified protocol.
+A recipient authenticates with a bearer token (OAuth supported for token acquisition) and uses standard list/get/read APIs to discover and consume assets. The same client can consume tables as DataFrames, download volume files, load model artifacts, or enumerate available agent skills — all through a unified protocol.
 
 ```
 GET /shares
@@ -83,9 +83,9 @@ GET /shares/{share}/schemas/{schema}/models
 
 ### Zero-Copy Credential Vending
 
-OpenSharing uses **credential vending** for secure, zero-copy access: the sharing server issues temporary, scoped cloud credentials (AWS STS, Azure SAS, GCP OAuth, Cloudflare R2) that expire automatically. Recipients read data directly from cloud storage — the sharing server is never in the data path, and data is never duplicated.
+OpenSharing uses **credential vending** for secure, zero-copy access. The sharing server issues either temporary, scoped cloud credentials (AWS STS, Azure SAS, GCP OAuth, Cloudflare R2) or pre-signed URLs, depending on the asset type and access mode. Recipients access assets directly from cloud storage — the sharing server is never in the data path, and data is never duplicated.
 
-Each asset type has its own credential endpoint scoped precisely to that asset's storage location:
+Each asset type has its own credential endpoint:
 
 - `POST .../tables/{table}/temporary-table-credentials`
 - `POST .../volumes/{volume}/temporary-volume-credentials`
@@ -104,10 +104,10 @@ The protocol is defined as a set of markdown specifications in the [`spec/`](./s
 | [`spec/protocols/SHARES.md`](./spec/protocols/SHARES.md) | Share object and list/get APIs |
 | [`spec/protocols/SCHEMAS.md`](./spec/protocols/SCHEMAS.md) | Schema object and list API |
 | [`spec/protocols/TABLES.md`](./spec/protocols/TABLES.md) | Table asset type specification |
-| [`spec/protocols/VOLUME_SHARING.md`](./spec/protocols/VOLUME_SHARING.md) | Volume asset type specification |
+| [`spec/protocols/VOLUMES.md`](./spec/protocols/VOLUMES.md) | Volume asset type specification |
 | [`spec/protocols/AGENT_SKILLS.md`](./spec/protocols/AGENT_SKILLS.md) | AgentSkill asset type specification |
 | [`spec/protocols/ML_MODELS.md`](./spec/protocols/ML_MODELS.md) | Model asset type specification |
-| [`spec/protocols/AGENT_SHARING.md`](./spec/protocols/AGENT_SHARING.md) | Agent asset type specification (community proposal) |
+| [`spec/protocols/AGENTS.md`](./spec/protocols/AGENTS.md) | Agent asset type specification (community proposal) |
 | [`spec/protocols/glossary-sharing-spec.md`](./spec/protocols/glossary-sharing-spec.md) | Page asset type specification (community proposal) |
 | [`spec/protocols/CREDENTIALS.md`](./spec/protocols/CREDENTIALS.md) | Shared credential model definitions |
 
