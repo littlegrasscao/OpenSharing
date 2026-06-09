@@ -20,7 +20,7 @@ See [spec](./spec/protocols/TABLES.md).
 
 Unstructured or semi-structured file collections — documents, media, embeddings, raw data, and any file-based asset. The protocol is agnostic to file contents and format. Access via temporary cloud credentials scoped to the volume's storage location.
 
-See [spec](./spec/protocols/VOLUME_SHARING.md).
+See [spec](./spec/protocols/VOLUMES.md).
 
 ### Agent Skills
 
@@ -38,7 +38,7 @@ See [spec](./spec/protocols/ML_MODELS.md).
 
 Live, callable agent services. Unlike `AgentSkill` assets, a shared agent is a service the provider operates — the recipient invokes it and receives results without accessing the underlying storage or model. This specification is at an early stage; see the spec for open design questions.
 
-See [spec](./spec/protocols/AGENT_SHARING.md).
+See [spec](./spec/protocols/AGENTS.md).
 
 ### Page / Glossary (Community Proposal)
 
