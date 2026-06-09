@@ -1,4 +1,8 @@
-# OpenSharing
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-horizontal-opensharing-1-color-white.png">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/logo-horizontal-opensharing-full-color-navy900.png">
+  <img alt="OpenSharing" src="./assets/logo-horizontal-opensharing-full-color-navy900.png" height="60">
+</picture>
 
 **The open sharing protocol for the agentic era.**
 
@@ -68,7 +72,7 @@ POST /shares/{share}/schemas/{schema}/tables/{table}/temporary-table-credentials
 
 ### For Recipients
 
-A recipient authenticates with a bearer token (OAuth supported for token acquisition) and uses standard list/get/read APIs to discover and consume assets. The same client can consume tables as DataFrames, download volume files, load model artifacts, or enumerate available agent skills — all through a unified protocol.
+A recipient authenticates with a bearer token and uses standard list/get/read APIs to discover and consume assets. The same client can consume tables as DataFrames, download volume files, load model artifacts, or enumerate available agent skills — all through a unified protocol. Besides using bearer tokens, clients and servers can support other auth mechanisms such as OAuth.
 
 ```
 GET /shares
@@ -83,7 +87,7 @@ GET /shares/{share}/schemas/{schema}/models
 
 ### Zero-Copy Credential Vending
 
-OpenSharing uses **credential vending** for secure, zero-copy access. The sharing server issues either temporary, scoped cloud credentials (AWS STS, Azure SAS, GCP OAuth, Cloudflare R2) or pre-signed URLs, depending on the asset type and access mode. Recipients access assets directly from cloud storage — the sharing server is never in the data path, and data is never duplicated.
+OpenSharing uses **credential vending** for secure, zero-copy access. The sharing server issues either **pre-signed URLs** or **temporary cloud credentials** (e.g. AWS STS, Azure SAS, GCP OAuth, Cloudflare R2), depending on the asset type and access mode. Recipients access assets directly from the provider's storage — the sharing server is never in the data path.
 
 Each asset type has its own credential endpoint:
 
