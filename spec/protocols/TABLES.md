@@ -709,4 +709,4 @@ Here is a list of REST APIs supported:
 - <b>reportMetrics</b>, POST /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}/metrics
 
 ## Access Delta Tables
-Refer to the [OpenSharing Protocol](./OVERVIEW.md) for details on accessing shared delta tables in different ways.
+Refer to the [Delta Sharing Protocol](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md) for details on accessing the shared delta tables in different ways.
