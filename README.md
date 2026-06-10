@@ -25,6 +25,10 @@ Four properties across all asset types that are important for the open agentic e
 - **Zero-copy** — assets stay in the provider's storage. The sharing server vends temporary, scoped credentials; recipients read directly from the source.
 - **Works where data lives** — works with cloud storage like S3, ADLS, GCS, R2, and on-premises environments. Organizations that can't move data can still share it.
 
+OpenSharing is adopted across a broad ecosystem of data providers, storage platforms, and clients:
+
+![OpenSharing Ecosystem](./assets/ecosystem.png)
+
 ---
 
 ## The Protocol
@@ -99,12 +103,6 @@ Each asset type has its own credential endpoint:
 - `POST .../volumes/{volume}/temporary-volume-credentials`
 - `POST .../models/{model}/versions/{version}/temporary-model-credentials`
 - `POST .../skills/{skill}/temporary-skill-credentials`
-
----
-
-## Ecosystem
-
-![OpenSharing Ecosystem](./assets/ecosystem.png)
 
 ---
 
