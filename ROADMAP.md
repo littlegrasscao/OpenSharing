@@ -44,7 +44,7 @@ See [spec](./spec/protocols/AGENTS.md).
 
 A named business entity, metric, dimension, or term — with a markdown definition and relationships to other pages in the same schema. Pages give recipients the business context needed to correctly interpret shared data assets. This specification is at an early stage; see the spec for open design questions.
 
-See [spec](./spec/protocols/glossary-sharing-spec.md).
+See [spec](./spec/protocols/GLOSSARY.md).
 
 ---
 

@@ -1,10 +1,10 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-# Open Sharing Protocol
+# OpenSharing Protocol
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-This document describes the Open Sharing Protocol's general concepts, including the profile file format and naming requirements.
+This document describes the OpenSharing Protocol's general concepts, including the profile file format and naming requirements.
 
 ## Profile File Format
 

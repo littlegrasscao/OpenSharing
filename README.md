@@ -102,6 +102,12 @@ Each asset type has its own credential endpoint:
 
 ---
 
+## Ecosystem
+
+![OpenSharing Ecosystem](./assets/ecosystem.png)
+
+---
+
 ## Specifications
 
 The protocol is defined as a set of markdown specifications in the [`spec/`](./spec/) directory:
