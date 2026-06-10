@@ -1,8 +1,8 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-horizontal-opensharing-1-color-white.png">
-    <source media="(prefers-color-scheme: light)" srcset="./assets/logo-horizontal-opensharing-full-color-navy900.png">
-    <img alt="OpenSharing" src="./assets/logo-horizontal-opensharing-full-color-navy900.png" height="60">
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-dark-mode.png">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/logo-original.png">
+    <img alt="OpenSharing" src="./assets/logo-original.png" height="60">
   </picture>
   <br><br>
   <strong>The open sharing protocol for the agentic era.</strong>
