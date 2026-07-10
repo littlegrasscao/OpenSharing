@@ -702,11 +702,31 @@ OpenSharing provides an implementation of the Iceberg REST catalog API specifica
 
 Here is a list of REST APIs supported:
 - <b>getConfig</b>, GET /v1/config
-- <b>listNamespaces</b>, GET /v1/{prefix}/shares/{share}/namespaces
-- <b>loadNamespaceMetadata</b>, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}
-- <b>listTables</b>, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables
-- <b>loadTable</b>, GET /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}
-- <b>reportMetrics</b>, POST /v1/{prefix}/shares/{share}/namespaces/{namespace}/tables/{table}/metrics
+- <b>listNamespaces</b>, GET /v1/{prefix}/namespaces
+- <b>loadNamespaceMetadata</b>, GET /v1/{prefix}/namespaces/{namespace}
+- <b>listTables</b>, GET /v1/{prefix}/namespaces/{namespace}/tables
+- <b>loadTable</b>, GET /v1/{prefix}/namespaces/{namespace}/tables/{table}
+- <b>reportMetrics</b>, POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics
+
+Example:
+
+`GET {icebergEndpoint}/v1/config?warehouse=<share>`
+
+```json
+{
+  "defaults": {},
+  "overrides": {
+    "prefix": "shares/<share>"
+  },
+  "endpoints": [
+    "GET /v1/{prefix}/namespaces",
+    "GET /v1/{prefix}/namespaces/{namespace}",
+    "GET /v1/{prefix}/namespaces/{namespace}/tables",
+    "GET /v1/{prefix}/namespaces/{namespace}/tables/{table}",
+    "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics"
+  ]
+}
+```
 
 ## Access Delta Tables
 Refer to the [Delta Sharing Protocol](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md) for details on accessing the shared delta tables in different ways.
