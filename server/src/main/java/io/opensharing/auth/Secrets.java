@@ -10,7 +10,7 @@ import java.util.HexFormat;
 /** Generates bearer tokens and activation nonces, and hashes them for storage. */
 public final class Secrets {
 
-  public static final String TOKEN_PREFIX = "os_";
+  private static final String TOKEN_PREFIX = "os_";
 
   private static final SecureRandom RANDOM = new SecureRandom();
   private static final int TOKEN_BYTES = 32;

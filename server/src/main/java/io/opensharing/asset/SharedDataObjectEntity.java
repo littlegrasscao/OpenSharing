@@ -22,6 +22,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -196,10 +197,6 @@ public class SharedDataObjectEntity extends BaseEntity {
     this.nameLower = ObjectNames.normalize(name);
   }
 
-  public String getNameLower() {
-    return nameLower;
-  }
-
   public AssetType getType() {
     return type;
   }
@@ -311,8 +308,13 @@ public class SharedDataObjectEntity extends BaseEntity {
     this.storageLocation = storageLocation;
   }
 
+  /**
+   * Read-only, so a caller reading how an object may be read cannot quietly change it: what
+   * Hibernate hands back is the persistent collection itself, and a change to it is a change to the
+   * row whether or not anyone meant one.
+   */
   public Set<AccessMode> getAccessModes() {
-    return accessModes;
+    return Collections.unmodifiableSet(accessModes);
   }
 
   public void setAccessModes(Set<AccessMode> accessModes) {
@@ -320,8 +322,9 @@ public class SharedDataObjectEntity extends BaseEntity {
         accessModes == null ? new LinkedHashSet<>() : new LinkedHashSet<>(accessModes);
   }
 
+  /** Read-only, for the same reason as {@link #getAccessModes()}. */
   public List<String> getAuxiliaryLocations() {
-    return auxiliaryLocations;
+    return Collections.unmodifiableList(auxiliaryLocations);
   }
 
   public void setAuxiliaryLocations(List<String> auxiliaryLocations) {

@@ -100,6 +100,15 @@ public class PrincipalStore {
         .orElseThrow(() -> ApiException.unauthenticated("the principal no longer exists"));
   }
 
+  /**
+   * The principal behind an authenticated request, which is who its writes are recorded as. Every
+   * admin endpoint that records authorship asks this, so it is answered once rather than in each.
+   */
+  @Transactional(readOnly = true)
+  public PrincipalEntity require(Caller caller) {
+    return requireById(caller.principalId());
+  }
+
   @Transactional(readOnly = true)
   public Page<PrincipalEntity> list(Pageable pageable) {
     return principals.findAllByOrderByNameLowerAsc(pageable);

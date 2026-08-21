@@ -25,6 +25,7 @@ public final class TableRequests {
       Long endingVersion,
       String endingTimestamp,
       boolean includeHistoricalMetadata,
+      boolean includeHistoricalProtocol,
       String capabilities,
       String fileIdHash) {}
 }

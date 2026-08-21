@@ -24,7 +24,8 @@ public record MetadataAction(
     Map<String, String> configuration,
     Long version,
     Long size,
-    Long numFiles) {
+    Long numFiles)
+    implements TableAction.Metadata {
 
   /** The encoding of the table's data files. */
   @JsonInclude(JsonInclude.Include.NON_NULL)

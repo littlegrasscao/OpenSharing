@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -69,10 +70,6 @@ public class ShareEntity extends BaseEntity {
     this.nameLower = ObjectNames.normalize(name);
   }
 
-  public String getNameLower() {
-    return nameLower;
-  }
-
   public String getDisplayName() {
     return displayName;
   }
@@ -89,8 +86,13 @@ public class ShareEntity extends BaseEntity {
     this.comment = comment;
   }
 
+  /**
+   * Read-only, so a caller reading a share's properties cannot quietly rewrite the row behind it:
+   * what Hibernate hands back is the persistent collection itself, and a change to it is a change to
+   * the entity whether or not anyone meant one.
+   */
   public Map<String, String> getProperties() {
-    return properties;
+    return Collections.unmodifiableMap(properties);
   }
 
   public void setProperties(Map<String, String> properties) {

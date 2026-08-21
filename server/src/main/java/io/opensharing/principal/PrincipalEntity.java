@@ -69,10 +69,6 @@ public class PrincipalEntity extends BaseEntity {
     return nameLower;
   }
 
-  public String getTokenHash() {
-    return tokenHash;
-  }
-
   public void setTokenHash(String tokenHash) {
     this.tokenHash = tokenHash;
   }

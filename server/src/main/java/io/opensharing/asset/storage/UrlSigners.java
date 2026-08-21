@@ -1,13 +1,15 @@
-package io.opensharing.asset.delta;
+package io.opensharing.asset.storage;
 
 import io.opensharing.catalog.StorageCredentials;
 import io.opensharing.http.ApiException;
+import io.opensharing.http.ErrorCodes;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 /** Picks the signer for a path, and says plainly when no signer can serve one. */
@@ -47,12 +49,23 @@ public class UrlSigners {
   /**
    * A url must not outlive the grant it was derived from, whatever ttl was asked for: the credentials
    * stop working at their expiry and the url would only 403 after it.
+   *
+   * <p>A grant that has already run out has nothing left to cap to. That is the catalog's doing,
+   * not the recipient's, so it is said as a bad gateway rather than handed over as a url that is
+   * dead on arrival — which is what a url stamped with the full ttl would be.
    */
   private static Duration capped(StorageCredentials credentials, Duration ttl) {
     if (credentials == null || credentials.expiration() == null) {
       return ttl;
     }
     Duration untilExpiry = Duration.between(Instant.now(), credentials.expiration());
-    return untilExpiry.isNegative() || untilExpiry.compareTo(ttl) > 0 ? ttl : untilExpiry;
+    if (untilExpiry.isNegative() || untilExpiry.isZero()) {
+      throw new ApiException(
+          HttpStatus.BAD_GATEWAY,
+          ErrorCodes.INTERNAL_ERROR,
+          "the catalog vended credentials that had already expired, so no url can be signed from "
+              + "them");
+    }
+    return untilExpiry.compareTo(ttl) < 0 ? untilExpiry : ttl;
   }
 }

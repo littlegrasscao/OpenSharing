@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.containsString;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -217,30 +216,60 @@ class RecipientProtocolApiTest extends ServerTestBase {
 
     mvc.perform(get(PROTOCOL_BASE + "/iceberg/v1/config?warehouse=" + share))
         .andExpect(status().isUnauthorized());
-  }
 
-  @Test
-  void icebergCatalogOperationsReportThatTheyAreNotServed() throws Exception {
+    // Leaving out the warehouse entirely is the client's mistake, not the server's.
     mvc.perform(
-            get(PROTOCOL_BASE + "/iceberg/v1/shares/" + share + "/namespaces")
-                .header("Authorization", "Bearer " + token))
-        .andExpect(status().isNotImplemented())
-        .andExpect(jsonPath("$.errorCode").value("NOT_IMPLEMENTED"));
+            get(PROTOCOL_BASE + "/iceberg/v1/config").header("Authorization", "Bearer " + token))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("warehouse is required"));
   }
 
   /**
-   * The test catalog puts this table on S3, and reading a log there needs a filesystem driver this
-   * build does not ship. That is a deployment fact, so the recipient is told which mode still works
-   * rather than handed a server error.
+   * The same share, seen through the Iceberg catalog: its schemas are namespaces, and of the three
+   * tables in it only the Iceberg one is a table this catalog can hand over.
    */
   @Test
-  void reportsTheMissingFilesystemDriverForATableOnS3() throws Exception {
+  void icebergNamespacesAreTheSchemasOfTheShareAndHoldOnlyItsIcebergTables() throws Exception {
+    String prefix = "/iceberg/v1/shares/" + share;
+    JsonNode namespaces = protocolGet(token, prefix + "/namespaces");
+
+    assertEquals(List.of("research"), levels(namespaces.get("namespaces").get(0)));
+    assertEquals(List.of("sales"), levels(namespaces.get("namespaces").get(1)));
+
+    JsonNode sales = protocolGet(token, prefix + "/namespaces/sales");
+    assertEquals(List.of("sales"), levels(sales.get("namespace")));
+
+    JsonNode tables = protocolGet(token, prefix + "/namespaces/sales/tables");
+    assertEquals(1, tables.get("identifiers").size(), "sales.orders is a Delta table");
+    assertEquals("forecast", tables.get("identifiers").get(0).get("name").asText());
+
+    mvc.perform(
+            get(PROTOCOL_BASE + prefix + "/namespaces/marketing")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.error.code").value(404))
+        .andExpect(jsonPath("$.error.type").value("RESOURCE_DOES_NOT_EXIST"));
+  }
+
+  private static List<String> levels(JsonNode namespace) {
+    List<String> levels = new ArrayList<>();
+    namespace.forEach(level -> levels.add(level.asText()));
+    return levels;
+  }
+
+  /**
+   * The test catalog puts this table on S3, which a test points at a port nothing listens on, so this
+   * is the other half of url access mode: what a recipient is told when the table's storage does not
+   * answer. Nothing about the request is wrong and a later attempt may work, so it is reported as a
+   * failure upstream rather than as a refusal.
+   */
+  @Test
+  void tellsARecipientWhenTheTablesStorageDoesNotAnswer() throws Exception {
     mvc.perform(
             get(PROTOCOL_BASE + "/shares/" + share + "/schemas/sales/tables/orders/metadata")
                 .header("Authorization", "Bearer " + token))
-        .andExpect(status().isNotImplemented())
-        .andExpect(jsonPath("$.errorCode").value("NOT_IMPLEMENTED"))
-        .andExpect(jsonPath("$.message").value(containsString("hadoop-aws")));
+        .andExpect(status().isBadGateway())
+        .andExpect(jsonPath("$.message").value(containsString("could not be reached")));
   }
 
   private static JsonNode itemNamed(JsonNode listResponse, String name) {

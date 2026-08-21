@@ -71,20 +71,8 @@ public class AssetResolutionService {
     ResolvedAsset resolved;
     try {
       resolved = catalog.resolveAsset(lookup, CatalogCaller.server(), AssetAction.READ);
-    } catch (AssetNotFoundException e) {
-      throw unservable(
-          object,
-          SharedObjectStatus.SOURCE_NOT_FOUND,
-          HttpStatus.NOT_FOUND,
-          ErrorCodes.RESOURCE_DOES_NOT_EXIST,
-          "'" + object.getName() + "' no longer exists in the " + catalog.name() + " catalog");
-    } catch (AssetAccessDeniedException e) {
-      throw unservable(
-          object,
-          SharedObjectStatus.PERMISSION_DENIED,
-          HttpStatus.FORBIDDEN,
-          ErrorCodes.PERMISSION_DENIED,
-          "the sharing server may no longer read '" + object.getName() + "'");
+    } catch (AssetNotFoundException | AssetAccessDeniedException e) {
+      throw noLongerServable(object, e);
     }
     if (snapshotChanged(object, resolved)) {
       applySnapshot(object, resolved);
@@ -132,20 +120,8 @@ public class AssetResolutionService {
       return catalog.listChildren(lookup, CatalogCaller.server()).stream()
           .filter(child -> child.type() == AssetType.TABLE)
           .toList();
-    } catch (AssetNotFoundException e) {
-      throw unservable(
-          schemaGrant,
-          SharedObjectStatus.SOURCE_NOT_FOUND,
-          HttpStatus.NOT_FOUND,
-          ErrorCodes.RESOURCE_DOES_NOT_EXIST,
-          "'" + schemaGrant.getName() + "' no longer exists in the " + catalog.name() + " catalog");
-    } catch (AssetAccessDeniedException e) {
-      throw unservable(
-          schemaGrant,
-          SharedObjectStatus.PERMISSION_DENIED,
-          HttpStatus.FORBIDDEN,
-          ErrorCodes.PERMISSION_DENIED,
-          "the sharing server may no longer read '" + schemaGrant.getName() + "'");
+    } catch (AssetNotFoundException | AssetAccessDeniedException e) {
+      throw noLongerServable(schemaGrant, e);
     }
   }
 
@@ -208,6 +184,28 @@ public class AssetResolutionService {
       modes.remove(AccessMode.URL);
     }
     return modes;
+  }
+
+  /**
+   * The two ways the catalog can withdraw an object the server is trying to serve. Both are asked
+   * the same way of anything shared, whether the question was about the object itself or about the
+   * tables of a schema it grants, so the answer is phrased in one place.
+   */
+  private ApiException noLongerServable(SharedDataObjectEntity object, CatalogException withdrawn) {
+    if (withdrawn instanceof AssetNotFoundException) {
+      return unservable(
+          object,
+          SharedObjectStatus.SOURCE_NOT_FOUND,
+          HttpStatus.NOT_FOUND,
+          ErrorCodes.RESOURCE_DOES_NOT_EXIST,
+          "'" + object.getName() + "' no longer exists in the " + catalog.name() + " catalog");
+    }
+    return unservable(
+        object,
+        SharedObjectStatus.PERMISSION_DENIED,
+        HttpStatus.FORBIDDEN,
+        ErrorCodes.PERMISSION_DENIED,
+        "the sharing server may no longer read '" + object.getName() + "'");
   }
 
   private ApiException unservable(

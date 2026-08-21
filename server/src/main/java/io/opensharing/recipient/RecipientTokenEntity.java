@@ -82,16 +82,8 @@ public class RecipientTokenEntity extends BaseEntity {
     this.recipient = recipient;
   }
 
-  public String getTokenHash() {
-    return tokenHash;
-  }
-
   public void setTokenHash(String tokenHash) {
     this.tokenHash = tokenHash;
-  }
-
-  public String getActivationNonceHash() {
-    return activationNonceHash;
   }
 
   public void setActivationNonceHash(String activationNonceHash) {

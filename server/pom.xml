@@ -24,6 +24,8 @@
     <spring-boot.version>3.5.3</spring-boot.version>
     <delta-kernel.version>4.0.0</delta-kernel.version>
     <hadoop.version>3.4.3</hadoop.version>
+    <aws-sdk.version>2.35.4</aws-sdk.version>
+    <gcs-connector.version>hadoop3-2.2.30</gcs-connector.version>
     <springdoc.version>2.9.0</springdoc.version>
   </properties>
 
@@ -82,9 +84,8 @@
     </dependency>
     <!--
       Kernel's default engine reaches storage through Hadoop, and this is how the catalog's
-      credentials are handed to it. Kernel pulls it in at runtime only, so it is declared here to
-      compile against. Reading a log on S3 or Azure additionally needs hadoop-aws or hadoop-azure,
-      which are not shipped: see the README on url access mode.
+      credentials are handed to it: a Configuration per read, keyed for the filesystem the table
+      lives on. Kernel pulls it in at runtime only, so it is declared here to compile against.
     -->
     <dependency>
       <groupId>org.apache.hadoop</groupId>
@@ -100,6 +101,81 @@
       <artifactId>hadoop-client-runtime</artifactId>
       <version>${hadoop.version}</version>
       <scope>runtime</scope>
+    </dependency>
+
+    <!--
+      One Hadoop filesystem per storage a table can live on, which is what makes a cloud log
+      readable at all: s3a for AWS and S3-compatible stores, abfs and wasb for Azure, gs for Google
+      Cloud Storage. These are the same four the reference sharing server supports, and each is a
+      thin filesystem over a cloud SDK; hadoop-common is `provided` in all of them, so the shaded
+      client above stays the only copy of Hadoop itself.
+    -->
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-aws</artifactId>
+      <version>${hadoop.version}</version>
+      <scope>runtime</scope>
+      <exclusions>
+        <!--
+          The AWS SDK's bundle is 686 MB of every service AWS has; S3A calls three of its modules,
+          which are declared below instead.
+        -->
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>bundle</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <version>${aws-sdk.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3-transfer-manager</artifactId>
+      <version>${aws-sdk.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>sts</artifactId>
+      <version>${aws-sdk.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>apache-client</artifactId>
+      <version>${aws-sdk.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-azure</artifactId>
+      <version>${hadoop.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <!--
+      Compiled against, not just shipped: Google's connector takes an access token through a provider
+      class of the deployment's own, which is how a vended token reaches it. The shaded build is the
+      one Google publishes for exactly this, with its own dependencies relocated out of the way.
+    -->
+    <dependency>
+      <groupId>com.google.cloud.bigdataoss</groupId>
+      <artifactId>gcs-connector</artifactId>
+      <version>${gcs-connector.version}</version>
+      <classifier>shaded</classifier>
+      <exclusions>
+        <!--
+          The shaded jar already carries every library it needs, relocated; its pom still lists the
+          unshaded ones, which would drag gRPC, Guava and Gson into this server to no purpose.
+        -->
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>

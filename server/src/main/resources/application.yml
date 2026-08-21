@@ -47,12 +47,14 @@ opensharing:
   pagination:
     default-max-results: 500
     max-max-results: 1000
+  storage:
+    # Region used to sign S3 urls when the catalog's credentials do not name one.
+    s3-region: us-east-1
   delta:
     # Reading Delta logs to serve version/metadata/query, and signing per-file urls from the
     # credentials the catalog minted. Turning this off leaves dir access mode alone.
     url-access-enabled: true
     url-ttl: 1h
-    s3-region: us-east-1
   catalog:
     # 'local' reads every asset from a declarative file. It is the only connector this build ships.
     type: local

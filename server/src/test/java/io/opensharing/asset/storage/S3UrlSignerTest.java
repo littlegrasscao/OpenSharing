@@ -1,4 +1,4 @@
-package io.opensharing.asset.delta;
+package io.opensharing.asset.storage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;

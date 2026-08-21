@@ -81,7 +81,7 @@ public class OpenApiConfiguration {
     return GroupedOpenApi.builder()
         .group("protocol")
         .displayName("Recipient protocol")
-        .pathsToMatch(under(properties.getProtocolPrefix()))
+        .pathsToMatch(properties.getProtocolPrefix() + "/**")
         .addOpenApiCustomizer(api -> api.addSecurityItem(requirement(RECIPIENT_TOKEN)))
         .build();
   }
@@ -92,7 +92,7 @@ public class OpenApiConfiguration {
     return GroupedOpenApi.builder()
         .group("admin")
         .displayName("Provider admin")
-        .pathsToMatch(under(properties.getAdmin().getBasePath()))
+        .pathsToMatch(properties.getAdmin().getBasePath() + "/**")
         .addOpenApiCustomizer(api -> api.addSecurityItem(requirement(PRINCIPAL_TOKEN)))
         .build();
   }
@@ -106,11 +106,5 @@ public class OpenApiConfiguration {
 
   private static SecurityRequirement requirement(String scheme) {
     return new SecurityRequirement().addList(scheme);
-  }
-
-  private static String under(String basePath) {
-    String normalized =
-        basePath.endsWith("/") ? basePath.substring(0, basePath.length() - 1) : basePath;
-    return normalized + "/**";
   }
 }

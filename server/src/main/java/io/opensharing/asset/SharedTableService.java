@@ -1,6 +1,5 @@
 package io.opensharing.asset;
 
-import io.opensharing.ObjectNames;
 import io.opensharing.catalog.AssetType;
 import io.opensharing.catalog.ResolvedAsset;
 import io.opensharing.http.ApiException;
@@ -81,7 +80,7 @@ public class SharedTableService {
     }
     List<SharedDataObjectEntity> tables =
         merge(objects.listTablesInSchema(share, schemaName), expand(grant.get()));
-    tables.sort(Comparator.comparing(table -> ObjectNames.normalize(table.getSharedAsName())));
+    tables.sort(Comparator.comparing(SharedDataObjectEntity::getSharedAsNameLower));
     return OffsetPage.of(tables, pageable);
   }
 
@@ -95,8 +94,8 @@ public class SharedTableService {
     grants.forEach(grant -> expanded.addAll(expand(grant)));
     List<SharedDataObjectEntity> tables = merge(objects.listTables(share), expanded);
     tables.sort(
-        Comparator.comparing((SharedDataObjectEntity table) -> table.getSharedAsSchemaLower())
-            .thenComparing(table -> ObjectNames.normalize(table.getSharedAsName())));
+        Comparator.comparing(SharedDataObjectEntity::getSharedAsSchemaLower)
+            .thenComparing(SharedDataObjectEntity::getSharedAsNameLower));
     return OffsetPage.of(tables, pageable);
   }
 
@@ -136,7 +135,7 @@ public class SharedTableService {
   }
 
   private static String alias(SharedDataObjectEntity table) {
-    return table.getSharedAsSchemaLower() + "." + ObjectNames.normalize(table.getSharedAsName());
+    return table.getSharedAsSchemaLower() + "." + table.getSharedAsNameLower();
   }
 
   private static boolean named(SharedDataObjectEntity table, String tableName) {

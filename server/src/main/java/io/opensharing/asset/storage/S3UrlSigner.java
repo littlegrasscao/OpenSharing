@@ -1,4 +1,4 @@
-package io.opensharing.asset.delta;
+package io.opensharing.asset.storage;
 
 import io.opensharing.catalog.StorageCredentialKeys;
 import io.opensharing.catalog.StorageCredentials;
@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -43,13 +44,10 @@ public class S3UrlSigner implements UrlSigner {
   private static final DateTimeFormatter DATE_STAMP =
       DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC);
 
-  /** Region key as an Iceberg REST catalog reports it alongside vended credentials. */
-  private static final String REGION_KEY = "region";
-
   private final String defaultRegion;
 
   public S3UrlSigner(OpenSharingProperties properties) {
-    this.defaultRegion = properties.getDelta().getS3Region();
+    this.defaultRegion = properties.getStorage().getS3Region();
   }
 
   @Override
@@ -65,7 +63,8 @@ public class S3UrlSigner implements UrlSigner {
     if (bucket == null || bucket.isBlank() || key.isBlank()) {
       throw ApiException.invalidParameter("'" + path + "' is not an S3 object path");
     }
-    String region = credentials.credentials().getOrDefault(REGION_KEY, defaultRegion);
+    String region =
+        credentials.credentials().getOrDefault(StorageCredentialKeys.REGION, defaultRegion);
     Instant now = Instant.now();
     Instant expiration = now.plus(ttl);
     String host = bucket + ".s3." + region + ".amazonaws.com";
@@ -184,10 +183,6 @@ public class S3UrlSigner implements UrlSigner {
   }
 
   private static String hex(byte[] bytes) {
-    StringBuilder hex = new StringBuilder(bytes.length * 2);
-    for (byte b : bytes) {
-      hex.append(String.format(Locale.ROOT, "%02x", b & 0xFF));
-    }
-    return hex.toString();
+    return HexFormat.of().formatHex(bytes);
   }
 }

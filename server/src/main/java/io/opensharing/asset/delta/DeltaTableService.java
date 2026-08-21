@@ -8,6 +8,7 @@ import io.opensharing.catalog.StorageCredentials;
 import io.opensharing.catalog.TableFormat;
 import io.opensharing.http.ApiException;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
@@ -37,9 +38,8 @@ public class DeltaTableService {
   public DeltaTable read(SharedDataObjectEntity object, DeltaVersion at, boolean includeFiles) {
     ResolvedAsset resolved = requireDelta(object);
     StorageCredentials minted = credentials.mint(resolved, resolved.storageLocation());
-    DeltaSnapshot snapshot =
-        reader.read(resolved.storageLocation(), minted, at, includeFiles);
-    return new DeltaTable(resolved, minted, snapshot);
+    return new DeltaTable(
+        resolved, minted, reader.read(resolved.storageLocation(), minted, at, includeFiles));
   }
 
   /**
@@ -49,13 +49,17 @@ public class DeltaTableService {
    * table's beginning, a missing end means up to now, and a timestamp is resolved the way the
    * protocol asks: the start moves forward to the first version at or after it, the end back to the
    * last version at or before it.
+   *
+   * @param includeHistory whether the schema and protocol changes inside the window are wanted,
+   *     which also decides where the response's own metadata comes from
    */
   public ChangeFeed changes(
       SharedDataObjectEntity object,
       Long startingVersion,
       Instant startingTimestamp,
       Long endingVersion,
-      Instant endingTimestamp) {
+      Instant endingTimestamp,
+      boolean includeHistory) {
     if (startingVersion != null && startingTimestamp != null) {
       throw ApiException.invalidParameter(
           "startingVersion and startingTimestamp are mutually exclusive");
@@ -76,17 +80,84 @@ public class DeltaTableService {
         endingVersion != null
             ? endingVersion
             : reader.read(location, minted, versionAt(endingTimestamp), false).version();
+    return window(resolved, minted, start, end, true, includeHistory, includeHistory ? start : end);
+  }
 
-    DeltaChanges changes = reader.changes(location, minted, start, end);
-    return new ChangeFeed(new DeltaTable(resolved, minted, changes.ending()), changes);
+  /**
+   * The data change files from a version onwards, which is what a stream following the table asks
+   * for rather than a snapshot of it.
+   *
+   * <p>Only the files each commit added and removed are reported: the recorded row-level changes a
+   * change data feed carries belong to the changes endpoint, and a stream rebuilding the table from
+   * commits would double-count them.
+   *
+   * <p>The response is headed by the starting version's own protocol and metadata, since that is
+   * where the reader is starting and the shape the first files it gets were written under.
+   */
+  public ChangeFeed changesFrom(
+      SharedDataObjectEntity object,
+      long startingVersion,
+      Long endingVersion,
+      boolean includeHistory) {
+    ResolvedAsset resolved = requireDelta(object);
+    StorageCredentials minted = credentials.mint(resolved, resolved.storageLocation());
+    String location = resolved.storageLocation();
+    long end =
+        endingVersion != null
+            ? endingVersion
+            : reader.read(location, minted, DeltaVersion.latest(), false).version();
+    return window(resolved, minted, startingVersion, end, false, includeHistory, startingVersion);
+  }
+
+  private ChangeFeed window(
+      ResolvedAsset resolved,
+      StorageCredentials minted,
+      long start,
+      long end,
+      boolean includeCdc,
+      boolean includeHistory,
+      long headVersion) {
+    String location = resolved.storageLocation();
+    List<DeltaChanges.Entry> entries =
+        reader.changes(location, minted, start, end, includeCdc, includeHistory);
+    DeltaSnapshot head = reader.read(location, minted, DeltaVersion.of(headVersion), false);
+    return new ChangeFeed(
+        new DeltaTable(resolved, minted, head),
+        withoutWhatTheHeadAlreadySays(entries, head.version()),
+        start);
+  }
+
+  /**
+   * A response opens with one version's protocol and metadata, so the log's own actions for that
+   * version would only say it twice. The files of that version stay, since nothing else has named
+   * them.
+   */
+  private static List<DeltaChanges.Entry> withoutWhatTheHeadAlreadySays(
+      List<DeltaChanges.Entry> entries, long headVersion) {
+    return entries.stream()
+        .filter(
+            entry ->
+                entry instanceof DeltaChanges.FileChange || entry.version() != headVersion)
+        .toList();
   }
 
   private static DeltaVersion versionAt(Instant timestamp) {
     return timestamp == null ? DeltaVersion.latest() : DeltaVersion.asOf(timestamp);
   }
 
-  /** A change feed and the table it came from, since signing its urls needs both. */
-  public record ChangeFeed(DeltaTable table, DeltaChanges changes) {}
+  /**
+   * A window of changes and the table it came from, since signing its urls needs both.
+   *
+   * @param startVersion the first version the window covers, which is what the protocol stamps on
+   *     the response, whatever version the metadata came from
+   */
+  public record ChangeFeed(
+      DeltaTable table, List<DeltaChanges.Entry> changes, long startVersion) {
+
+    public ChangeFeed {
+      changes = changes == null ? List.of() : List.copyOf(changes);
+    }
+  }
 
   /**
    * The version alone, which is the cheap question the protocol has a whole endpoint for.

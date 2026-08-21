@@ -31,7 +31,7 @@ public class FilterConfiguration {
     FilterRegistrationBean<RecipientAuthenticationFilter> registration =
         new FilterRegistrationBean<>(
             new RecipientAuthenticationFilter(tokenService, objectMapper));
-    registration.addUrlPatterns(pattern(properties.getProtocolPrefix()));
+    registration.addUrlPatterns(properties.getProtocolPrefix() + "/*");
     registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
     return registration;
   }
@@ -46,7 +46,7 @@ public class FilterConfiguration {
                 resolveBootstrapToken(properties),
                 properties.getAdmin().getBasePath(),
                 objectMapper));
-    registration.addUrlPatterns(pattern(properties.getAdmin().getBasePath()));
+    registration.addUrlPatterns(properties.getAdmin().getBasePath() + "/*");
     registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
     return registration;
   }
@@ -65,10 +65,5 @@ public class FilterConfiguration {
             + "OPENSHARING_ADMIN_BOOTSTRAP_TOKEN) to keep it stable across restarts.",
         generated);
     return generated;
-  }
-
-  private static String pattern(String basePath) {
-    String normalized = basePath.endsWith("/") ? basePath.substring(0, basePath.length() - 1) : basePath;
-    return normalized + "/*";
   }
 }

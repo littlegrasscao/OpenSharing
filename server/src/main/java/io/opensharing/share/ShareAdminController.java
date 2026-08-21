@@ -60,7 +60,7 @@ public class ShareAdminController {
   public ShareResponse create(Caller caller, @Valid @RequestBody CreateShareRequest request) {
     return ShareResponse.from(
         shares.create(
-            author(caller),
+            principals.require(caller),
             request.name(),
             request.displayName(),
             request.comment(),
@@ -88,7 +88,7 @@ public class ShareAdminController {
   @PatchMapping("/{share}")
   public ShareResponse update(
       Caller caller, @PathVariable String share, @Valid @RequestBody UpdateShareRequest request) {
-    PrincipalEntity author = author(caller);
+    PrincipalEntity author = principals.require(caller);
     ShareEntity entity = shares.requireOwned(share, author);
     for (UpdateShareRequest.Update update : request.updates()) {
       apply(caller, author, entity, update);
@@ -100,7 +100,7 @@ public class ShareAdminController {
 
   @DeleteMapping("/{share}")
   public ResponseEntity<Void> delete(Caller caller, @PathVariable String share) {
-    shares.delete(share, author(caller));
+    shares.delete(share, principals.require(caller));
     return ResponseEntity.noContent().build();
   }
 
@@ -119,7 +119,7 @@ public class ShareAdminController {
       Caller caller,
       @PathVariable String share,
       @Valid @RequestBody UpdateSharePermissionsRequest request) {
-    PrincipalEntity author = author(caller);
+    PrincipalEntity author = principals.require(caller);
     ShareEntity entity = shares.requireOwned(share, author);
     for (UpdateSharePermissionsRequest.Change change : request.changes()) {
       var recipient = recipients.require(change.recipientName());
@@ -178,9 +178,5 @@ public class ShareAdminController {
     return ShareResponse.withObjects(
         share,
         objects.listAll(share).stream().map(SharedDataObjectResponse::from).toList());
-  }
-
-  private PrincipalEntity author(Caller caller) {
-    return principals.requireById(caller.principalId());
   }
 }

@@ -2,6 +2,7 @@ package io.opensharing;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -44,7 +45,6 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
   @DynamicPropertySource
   static void pointTheCatalogAtALocalDeltaTable(DynamicPropertyRegistry registry)
       throws IOException {
-    Path table = new ClassPathResource("delta-table/orders").getFile().toPath();
     Path catalog = Files.createTempFile("delta-catalog", ".yml");
     Files.writeString(
         catalog,
@@ -58,6 +58,22 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
             type: TABLE
             storageLocation: %s
             format: delta
+          - identifier: main.sales.evolving
+            type: TABLE
+            storageLocation: %s
+            format: delta
+          - identifier: main.sales.vectors
+            type: TABLE
+            storageLocation: %s
+            format: delta
+          - identifier: main.sales.dormant
+            type: TABLE
+            storageLocation: %s
+            format: delta
+          - identifier: main.sales.leftover
+            type: TABLE
+            storageLocation: %s
+            format: delta
           - identifier: main.sales.forecast
             type: TABLE
             storageLocation: /tmp/forecast
@@ -67,8 +83,17 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
             storageLocation: /tmp/notes
             format: parquet
         """
-            .formatted(table));
+            .formatted(
+                tableRoot("orders"),
+                tableRoot("evolving"),
+                tableRoot("vectors"),
+                tableRoot("dormant"),
+                tableRoot("leftover")));
     registry.add("opensharing.catalog.local.file", () -> "file:" + catalog);
+  }
+
+  private static Path tableRoot(String name) throws IOException {
+    return new ClassPathResource("delta-table/" + name).getFile().toPath();
   }
 
   @BeforeEach
@@ -169,23 +194,70 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
 
   @Test
   void closesTheStreamWhenTheClientAsksItTo() throws Exception {
+    MvcResult result =
+        perform(
+                post(protocol("/query"))
+                    .content("{}")
+                    .header(CAPABILITIES, "includeEndStreamAction=true"))
+            .andReturn();
+    List<JsonNode> lines = ndjson(result);
+
+    JsonNode last = lines.get(lines.size() - 1).get("endStreamAction");
+    assertNotNull(last, "the last line closes the stream");
+    assertTrue(last.get("minUrlExpirationTimestamp").asLong() > Instant.now().toEpochMilli());
+    assertEquals(
+        "responseformat=parquet;includeendstreamaction=true",
+        result.getResponse().getHeader(CAPABILITIES),
+        "a client that must watch for the last line is told that it will come");
+  }
+
+  @Test
+  void answersInDeltaFormatWhenTheClientAsksForIt() throws Exception {
+    MvcResult result =
+        perform(get(protocol("/metadata")).header(CAPABILITIES, "responseFormat=delta")).andReturn();
+    List<JsonNode> lines = ndjson(result);
+
+    assertEquals("responseformat=delta", result.getResponse().getHeader(CAPABILITIES));
+    JsonNode protocol = lines.get(0).get("protocol").get("deltaProtocol");
+    assertEquals(1, protocol.get("minReaderVersion").asInt());
+    assertEquals(2, protocol.get("minWriterVersion").asInt(), "the whole action, not just a reader");
+
+    JsonNode metadata = lines.get(1).get("metaData");
+    assertTrue(
+        metadata.get("location").asText().endsWith("delta-table/orders"),
+        "where the table lives is the sharing server's to say, so it sits beside the action");
+    JsonNode delta = metadata.get("deltaMetadata");
+    assertEquals("11111111-2222-3333-4444-555555555555", delta.get("id").asText());
+    assertEquals("country", delta.get("partitionColumns").get(0).asText());
+    assertTrue(delta.get("schemaString").asText().contains("order_id"));
+  }
+
+  @Test
+  void wrapsEachFileAsTheLogsOwnActionInDeltaFormat() throws Exception {
+    JsonNode parquet = ndjson(perform(post(protocol("/query")).content("{}")).andReturn()).get(2);
     List<JsonNode> lines =
         ndjson(
             perform(
                     post(protocol("/query"))
                         .content("{}")
-                        .header(CAPABILITIES, "includeEndStreamAction=true"))
+                        .header(CAPABILITIES, "responseFormat=delta"))
                 .andReturn());
 
-    JsonNode last = lines.get(lines.size() - 1).get("endStreamAction");
-    assertNotNull(last, "the last line closes the stream");
-    assertTrue(last.get("minUrlExpirationTimestamp").asLong() > Instant.now().toEpochMilli());
-  }
+    JsonNode file = lines.get(2).get("file");
+    assertEquals(
+        parquet.get("file").get("id").asText(),
+        file.get("id").asText(),
+        "the same file, so the same id whichever format asked for it");
+    assertTrue(file.get("expirationTimestamp").asLong() > Instant.now().toEpochMilli());
 
-  @Test
-  void refusesARequestThatWillOnlyAcceptDeltaFormat() throws Exception {
-    perform(get(protocol("/metadata")).header(CAPABILITIES, "responseFormat=delta"))
-        .andExpect(status().isNotImplemented());
+    JsonNode add = file.get("deltaSingleAction").get("add");
+    assertEquals(
+        parquet.get("file").get("url").asText(),
+        add.get("path").asText(),
+        "where parquet format puts a url, delta format puts it in the log's own path field");
+    assertTrue(add.get("dataChange").asBoolean());
+    assertTrue(add.get("modificationTime").asLong() > 0);
+    assertTrue(add.get("stats").asText().contains("numRecords"));
   }
 
   @Test
@@ -195,16 +267,114 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
             .andReturn();
 
     assertEquals(200, result.getResponse().getStatus());
-    assertEquals("responseformat=parquet", result.getResponse().getHeader(CAPABILITIES));
+    assertEquals(
+        "responseformat=parquet",
+        result.getResponse().getHeader(CAPABILITIES),
+        "a table with nothing advanced about it is answered in the format every client reads");
+  }
+
+  @Test
+  void answersInDeltaFormatWhenNothingElseCanCarryTheTable() throws Exception {
+    addTable(share, "sales.vectors", "main.sales.vectors");
+
+    MvcResult result =
+        perform(
+                get(protocolOf("vectors", "/metadata"))
+                    .header(
+                        CAPABILITIES,
+                        "responseFormat=delta,parquet;readerFeatures=deletionVectors"))
+            .andReturn();
+
+    assertEquals("responseformat=delta", result.getResponse().getHeader(CAPABILITIES));
+    assertEquals(
+        List.of("deletionVectors"),
+        readerFeatures(ndjson(result).get(0).get("protocol").get("deltaProtocol")));
+  }
+
+  @Test
+  void refusesEitherFormatToAClientThatCannotReadWhatTheTableUses() throws Exception {
+    addTable(share, "sales.vectors", "main.sales.vectors");
+
+    for (String header : List.of("responseFormat=parquet", "responseFormat=delta")) {
+      perform(get(protocolOf("vectors", "/metadata")).header(CAPABILITIES, header))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.message").value(containsString("deletionVectors")));
+    }
+  }
+
+  @Test
+  void refusesParquetForATableUsingWhatThatFormatCannotSay() throws Exception {
+    addTable(share, "sales.vectors", "main.sales.vectors");
+
+    perform(
+            get(protocolOf("vectors", "/metadata"))
+                .header(CAPABILITIES, "responseFormat=parquet;readerFeatures=deletionVectors"))
+        .andExpect(status().isNotImplemented())
+        .andExpect(jsonPath("$.message").value(containsString("responseformat=delta")));
+  }
+
+  @Test
+  void servesATableThatOnlyNamesAFeatureToAnyClient() throws Exception {
+    addTable(share, "sales.dormant", "main.sales.dormant");
+
+    List<JsonNode> lines =
+        ndjson(perform(post(protocolOf("dormant", "/query")).content("{}")).andReturn());
+
+    assertEquals(
+        1,
+        lines.get(0).get("protocol").get("minReaderVersion").asInt(),
+        "the table names deletion vectors and uses none, so a parquet client is told what it can act "
+            + "on rather than a version it would refuse");
+    assertEquals(1, lines.get(1).get("metaData").get("numFiles").asLong());
+    assertNotNull(lineWith(lines, "file").get("url").asText());
+  }
+
+  @Test
+  void refusesAFileWhoseDeletionVectorOutlivedTheSettingThatMadeIt() throws Exception {
+    addTable(share, "sales.leftover", "main.sales.leftover");
+
+    // The table says the feature is off, so the format was settled as parquet, and only the file
+    // itself reveals that some of its rows are gone.
+    perform(get(protocolOf("leftover", "/metadata"))).andExpect(status().isOk());
+    perform(post(protocolOf("leftover", "/query")).content("{}"))
+        .andExpect(status().isNotImplemented())
+        .andExpect(jsonPath("$.message").value(containsString("deletion vector")));
+  }
+
+  @Test
+  void signsADeletionVectorAsItSignsTheFileItBelongsTo() throws Exception {
+    addTable(share, "sales.vectors", "main.sales.vectors");
+
+    List<JsonNode> lines =
+        ndjson(
+            perform(
+                    post(protocolOf("vectors", "/query"))
+                        .content("{}")
+                        .header(CAPABILITIES, "responseFormat=delta;readerFeatures=deletionVectors"))
+                .andReturn());
+
+    JsonNode file = lines.get(2).get("file");
+    assertNotNull(file.get("deletionVectorFileId"), "a client caches a vector as it caches a file");
+    JsonNode vector = file.get("deltaSingleAction").get("add").get("deletionVector");
+    assertEquals("p", vector.get("storageType").asText(), "a url is a path, not the log's own name");
+    assertTrue(
+        vector
+            .get("pathOrInlineDv")
+            .asText()
+            .endsWith("deletion_vector_d3c4b5a6-1111-4222-8333-444455556666.bin"),
+        vector.get("pathOrInlineDv").asText());
+    assertEquals(2, vector.get("cardinality").asLong());
   }
 
   @Test
   void echoesTheFileIdSchemeItUsedAndRejectsOthers() throws Exception {
-    MvcResult accepted =
-        perform(post(protocol("/query")).content("{}").header("fileidhash", "PARQUET")).andReturn();
-    assertEquals("parquet", accepted.getResponse().getHeader("fileidhash"));
+    for (String scheme : List.of("PARQUET", "delta")) {
+      MvcResult result =
+          perform(post(protocol("/query")).content("{}").header("fileidhash", scheme)).andReturn();
+      assertEquals(scheme.toLowerCase(), result.getResponse().getHeader("fileidhash"));
+    }
 
-    perform(post(protocol("/query")).content("{}").header("fileidhash", "delta"))
+    perform(post(protocol("/query")).content("{}").header("fileidhash", "sha256"))
         .andExpect(status().isBadRequest());
   }
 
@@ -259,9 +429,125 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
   }
 
   @Test
-  void refusesToReportSchemaChangesInsideTheWindow() throws Exception {
-    perform(get(protocol("/changes?includeHistoricalMetadata=true")))
-        .andExpect(status().isNotImplemented());
+  void stampsAChangeFeedWithTheVersionItsFilesStartAt() throws Exception {
+    MvcResult result = perform(get(protocol("/changes?startingVersion=2"))).andReturn();
+
+    assertEquals(
+        "2",
+        result.getResponse().getHeader(TABLE_VERSION),
+        "a reader carries on from where the response starts, not from where it ends");
+  }
+
+  @Test
+  void answersAStartingVersionQueryWithWhatEachCommitChanged() throws Exception {
+    MvcResult result =
+        perform(post(protocol("/query")).content("{\"startingVersion\":1}")).andReturn();
+    List<JsonNode> lines = ndjson(result);
+
+    assertEquals("1", result.getResponse().getHeader(TABLE_VERSION));
+    assertEquals(0, lines.stream().filter(line -> line.has("file")).count(), "not a snapshot");
+    assertEquals(
+        List.of(1L, 2L),
+        lines.stream()
+            .filter(line -> line.has("add"))
+            .map(line -> line.get("add").get("version").asLong())
+            .toList(),
+        "the file commit 1 added, then the one commit 2 added in the removed file's place");
+    assertEquals(2, lineWith(lines, "remove").get("version").asInt());
+    assertEquals(
+        0,
+        lines.stream().filter(line -> line.has("cdf")).count(),
+        "the recorded row-level changes belong to the changes endpoint");
+  }
+
+  @Test
+  void refusesAStartingVersionAlongsideATimeTravel() throws Exception {
+    perform(post(protocol("/query")).content("{\"startingVersion\":1,\"version\":2}"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void reportsASchemaChangeInsideAStartingVersionQuery() throws Exception {
+    addTable(share, "sales.evolving", "main.sales.evolving");
+
+    List<JsonNode> lines =
+        ndjson(
+            perform(
+                    post(protocolOf("evolving", "/query"))
+                        .content("{\"startingVersion\":0,\"endingVersion\":1}"))
+                .andReturn());
+
+    JsonNode changed = lines.get(lines.size() - 2).get("metaData");
+    assertEquals(1, changed.get("version").asLong(), "the commit that changed the schema");
+    assertTrue(changed.get("schemaString").asText().contains("note"));
+    assertFalse(
+        lines.get(1).get("metaData").get("schemaString").asText().contains("note"),
+        "the response opens with the schema the reader is starting from");
+  }
+
+  @Test
+  void reportsASchemaChangeInTheChangeFeedWhenAsked() throws Exception {
+    addTable(share, "sales.evolving", "main.sales.evolving");
+
+    List<JsonNode> lines =
+        ndjson(
+            perform(
+                    get(
+                        protocolOf(
+                            "evolving",
+                            "/changes?startingVersion=0&endingVersion=1"
+                                + "&includeHistoricalMetadata=true")))
+                .andReturn());
+
+    List<Long> schemaVersions =
+        lines.stream()
+            .filter(line -> line.has("metaData"))
+            .map(line -> line.get("metaData").get("version").asLong())
+            .toList();
+    assertEquals(List.of(0L, 1L), schemaVersions, "the window's own schema, then the change to it");
+  }
+
+  @Test
+  void followsAWindowPastAProtocolChangeThatChangesNothingParquetSays() throws Exception {
+    addTable(share, "sales.evolving", "main.sales.evolving");
+
+    List<JsonNode> lines =
+        ndjson(
+            perform(get(protocolOf("evolving", "/changes?includeHistoricalMetadata=true")))
+                .andReturn());
+
+    assertEquals(
+        3,
+        lines.stream().filter(line -> line.has("add")).count(),
+        "the table raised its reader version mid-window without turning anything on, which a "
+            + "reader of these lines has no reason to hear about");
+    assertEquals(1, lines.get(0).get("protocol").get("minReaderVersion").asInt());
+  }
+
+  @Test
+  void reportsAProtocolChangeInDeltaFormatWhenAsked() throws Exception {
+    addTable(share, "sales.evolving", "main.sales.evolving");
+
+    List<JsonNode> lines =
+        ndjson(
+            perform(
+                    get(
+                            protocolOf(
+                                "evolving",
+                                "/changes?includeHistoricalMetadata=true"
+                                    + "&includeHistoricalProtocol=true"))
+                        .header(
+                            CAPABILITIES, "responseFormat=delta;readerFeatures=deletionVectors"))
+                .andReturn());
+
+    JsonNode raised =
+        lines.stream()
+            .filter(line -> line.has("protocol") && line.get("protocol").has("version"))
+            .reduce((first, second) -> second)
+            .orElseThrow()
+            .get("protocol");
+    assertEquals(2, raised.get("version").asLong());
+    assertEquals(3, raised.get("deltaProtocol").get("minReaderVersion").asInt());
   }
 
   @Test
@@ -279,7 +565,17 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
   }
 
   private String protocol(String operation) {
-    return PROTOCOL_BASE + "/shares/" + share + "/schemas/sales/tables/orders" + operation;
+    return protocolOf("orders", operation);
+  }
+
+  private String protocolOf(String table, String operation) {
+    return PROTOCOL_BASE + "/shares/" + share + "/schemas/sales/tables/" + table + operation;
+  }
+
+  private static List<String> readerFeatures(JsonNode protocol) {
+    List<String> features = new ArrayList<>();
+    protocol.get("readerFeatures").forEach(feature -> features.add(feature.asText()));
+    return features;
   }
 
   private ResultActions perform(MockHttpServletRequestBuilder request) throws Exception {

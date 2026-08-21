@@ -19,4 +19,5 @@ public record FileAction(
     String stats,
     Long version,
     Long timestamp,
-    Long expirationTimestamp) {}
+    Long expirationTimestamp)
+    implements TableAction.File {}

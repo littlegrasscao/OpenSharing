@@ -33,6 +33,9 @@ class OpenApiDocumentTest extends ServerTestBase {
         "table discovery is part of the protocol a recipient generates a client for");
     assertNotNull(paths.get(PROTOCOL_BASE + TABLES + "/{table}/query"));
     assertNotNull(paths.get(PROTOCOL_BASE + "/iceberg/v1/config"));
+    assertNotNull(
+        paths.get(PROTOCOL_BASE + "/iceberg/v1/shares/{share}/namespaces/{namespace}/tables/{table}"),
+        "the Iceberg catalog is part of the protocol too");
   }
 
   @Test

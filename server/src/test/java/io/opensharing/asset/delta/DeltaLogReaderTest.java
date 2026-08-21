@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.opensharing.asset.storage.HadoopStorage;
+import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
 import java.io.IOException;
 import java.util.List;
@@ -18,7 +20,8 @@ import org.springframework.core.io.ClassPathResource;
  */
 class DeltaLogReaderTest {
 
-  private static final DeltaLogReader READER = new DeltaLogReader();
+  private static final DeltaLogReader READER =
+      new DeltaLogReader(new HadoopStorage(new OpenSharingProperties()));
 
   private static String tableRoot() throws IOException {
     return tableRoot("orders");
@@ -109,15 +112,15 @@ class DeltaLogReaderTest {
 
   @Test
   void readsTheChangeFeedAsAddsRemovesAndRecordedChanges() throws Exception {
-    DeltaChanges changes = READER.changes(tableRoot(), null, 2, 2);
+    List<DeltaChanges.Entry> entries = READER.changes(tableRoot(), null, 2, 2, true, false);
 
-    assertEquals(3, changes.changes().size());
+    assertEquals(3, entries.size());
     assertEquals(
         List.of(DeltaChanges.Kind.ADD, DeltaChanges.Kind.CDF, DeltaChanges.Kind.REMOVE),
-        changes.changes().stream().map(DeltaChanges.Change::kind).sorted().toList(),
+        files(entries).stream().map(DeltaChanges.FileChange::kind).sorted().toList(),
         "commit 2 removed a file, added its replacement and recorded the change");
-    DeltaChanges.Change cdf =
-        changes.changes().stream()
+    DeltaChanges.FileChange cdf =
+        files(entries).stream()
             .filter(change -> change.kind() == DeltaChanges.Kind.CDF)
             .findFirst()
             .orElseThrow();
@@ -127,19 +130,81 @@ class DeltaLogReaderTest {
   }
 
   @Test
-  void spansEveryVersionInTheChangeWindow() throws Exception {
-    DeltaChanges changes = READER.changes(tableRoot(), null, 0, 2);
+  void leavesOutTheRecordedChangesWhenOnlyTheCommittedFilesAreWanted() throws Exception {
+    List<DeltaChanges.Entry> entries = READER.changes(tableRoot(), null, 2, 2, false, false);
 
-    assertEquals(5, changes.changes().size(), "two appends, then a remove, an add and a change");
-    assertEquals(0, changes.changes().get(0).version());
+    assertEquals(
+        List.of(DeltaChanges.Kind.ADD, DeltaChanges.Kind.REMOVE),
+        files(entries).stream().map(DeltaChanges.FileChange::kind).sorted().toList(),
+        "a stream rebuilding the table from commits would double-count the change file");
+  }
+
+  @Test
+  void spansEveryVersionInTheChangeWindow() throws Exception {
+    List<DeltaChanges.Entry> entries = READER.changes(tableRoot(), null, 0, 2, true, false);
+
+    assertEquals(5, entries.size(), "two appends, then a remove, an add and a change");
+    assertEquals(0, entries.get(0).version());
+  }
+
+  @Test
+  void reportsTheSchemaAndProtocolChangesInsideTheWindow() throws Exception {
+    List<DeltaChanges.Entry> entries =
+        READER.changes(tableRoot("evolving"), null, 0, 2, false, true);
+
+    DeltaChanges.MetadataChange schema =
+        entries.stream()
+            .filter(DeltaChanges.MetadataChange.class::isInstance)
+            .map(DeltaChanges.MetadataChange.class::cast)
+            .reduce((first, second) -> second)
+            .orElseThrow();
+    assertEquals(1, schema.version(), "the commit that widened the schema");
+    assertTrue(schema.metadata().schemaString().contains("note"), schema.metadata().schemaString());
+
+    List<DeltaChanges.ProtocolChange> protocols =
+        entries.stream()
+            .filter(DeltaChanges.ProtocolChange.class::isInstance)
+            .map(DeltaChanges.ProtocolChange.class::cast)
+            .toList();
+    assertEquals(
+        List.of(0L, 2L),
+        protocols.stream().map(DeltaChanges.ProtocolChange::version).toList(),
+        "the protocol the table started with, then the commit that raised it");
+    DeltaChanges.ProtocolChange raised = protocols.get(1);
+    assertEquals(3, raised.protocol().minReaderVersion());
+    assertEquals(List.of("deletionVectors"), raised.protocol().readerFeatures());
+  }
+
+  @Test
+  void readsADeletionVectorAndWhereItsFileLives() throws Exception {
+    DeltaSnapshot snapshot =
+        READER.read(tableRoot("vectors"), null, DeltaVersion.latest(), true);
+
+    DeltaSnapshot.DeletionVector vector = snapshot.files().get(0).deletionVector();
+    assertEquals("u", vector.storageType(), "the log's own way of naming the file");
+    assertEquals(2, vector.cardinality());
+    assertTrue(
+        vector.absolutePath().endsWith("deletion_vector_d3c4b5a6-1111-4222-8333-444455556666.bin"),
+        vector.absolutePath());
+    assertTrue(
+        vector.absolutePath().startsWith(tableRoot("vectors")),
+        "a vector is signed like a data file, so it has to be one of the table's own");
   }
 
   @Test
   void refusesABackwardsChangeWindow() throws Exception {
     String root = tableRoot();
-    ApiException e = assertThrows(ApiException.class, () -> READER.changes(root, null, 2, 1));
+    ApiException e =
+        assertThrows(ApiException.class, () -> READER.changes(root, null, 2, 1, true, false));
 
     assertEquals(400, e.getStatus().value());
+  }
+
+  private static List<DeltaChanges.FileChange> files(List<DeltaChanges.Entry> entries) {
+    return entries.stream()
+        .filter(DeltaChanges.FileChange.class::isInstance)
+        .map(DeltaChanges.FileChange.class::cast)
+        .toList();
   }
 
   @Test
@@ -171,8 +236,13 @@ class DeltaLogReaderTest {
   }
 
   @Test
-  void addressesS3TheWayHadoopDoes() {
-    assertEquals("s3a://bucket/table", DeltaLogReader.hadoopPath("s3://bucket/table/"));
-    assertEquals("abfss://c@a.dfs.core.windows.net/t", DeltaLogReader.hadoopPath("abfss://c@a.dfs.core.windows.net/t"));
+  void reportsAStorageItCannotAddressAsUnimplemented() {
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () -> READER.read("oss://bucket/table", null, DeltaVersion.latest(), false));
+
+    assertEquals(501, e.getStatus().value());
+    assertTrue(e.getMessage().contains("dir access mode"), e.getMessage());
   }
 }

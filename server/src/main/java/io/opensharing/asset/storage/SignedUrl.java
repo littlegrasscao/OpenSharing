@@ -1,4 +1,4 @@
-package io.opensharing.asset.delta;
+package io.opensharing.asset.storage;
 
 import java.time.Instant;
 

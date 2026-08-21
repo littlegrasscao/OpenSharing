@@ -66,14 +66,14 @@ recipient-facing protocol is the one exception, and has a package of its own.
 |---|---|
 | `principal` | `PrincipalEntity` and `PrincipalStore`, the `/principals` endpoints, and `Caller` — the identity the admin filter resolves and controllers ask for when a write needs an owner. |
 | `share` | `ShareEntity`, `SharePermissionEntity` and `SharePrivilege`, `ShareStore`, the provider-admin share and permission endpoints, `ShareAccessService` (may this recipient read this share?) and `ShareMapper`. |
-| `asset` | Everything about a shared asset that does not depend on its format: `SharedDataObjectEntity` and its status, `SharedDataObjectStore` and `SharedDataObjectService`, `SharedAliases` (the alias rules), `SharedTableService` (which tables a share holds, expanding a shared schema), `AssetResolutionService` (the server's use of the catalog trait), `CredentialVendingService` and `TableMapper`. One subpackage per table format, each implementing `TableOperations`: `asset.delta` holds url access mode — `DeltaLogReader` over Delta Kernel, the response mapper and the `UrlSigner` implementations — and `asset.iceberg` holds the stub that says so. |
-| `serving` | The recipient-facing protocol: `RecipientApi` (every route it serves), the share, schema and table discovery endpoints, credential vending, the four table read operations, the Iceberg REST catalog surface, and the `TableOperations` seam those read operations dispatch across. |
+| `asset` | Everything about a shared asset that does not depend on its format: `SharedDataObjectEntity` and its status, `SharedDataObjectStore` and `SharedDataObjectService`, `SharedAliases` (the alias rules), `SharedTableService` (which tables a share holds, expanding a shared schema), `AssetResolutionService` (the server's use of the catalog trait, and so where the access modes an object offers are decided), `CredentialVendingService` and `TableMapper`. `asset.storage` holds reaching the storage a table lives in, whatever its format: the `UrlSigner` per scheme, the `StorageReader` that fetches a file the server itself has to look at, `StoragePaths` (whether a path is one of a shared table's own — asked by every format, so answered once), and `HadoopStorage`, which is how a read that goes through Hadoop gets the catalog's credentials and the path spelling a driver wants, `VendedGcsToken` included. Then one subpackage per format: `asset.delta` is url access mode — `DeltaLogReader` over Delta Kernel, `DeltaSharingCapabilities` (which response format a request settles on, and how much of the table's protocol the client is told) and a `DeltaLines` writer per format — and `asset.iceberg` is the Iceberg catalog's `loadTable`, plus the refusal that sends the Delta read operations there. |
+| `serving` | The recipient-facing protocol: `RecipientApi` (every route it serves), the share, schema and table discovery endpoints, credential vending, the four table read operations, the Iceberg REST catalog with the error shape its clients read, and the `TableOperations` seam those read operations dispatch across. |
 | `recipient` | `RecipientEntity`, `RecipientTokenEntity` and `AuthType`, `RecipientStore`, the provider-admin recipient and rotation endpoints, token minting, rotation and one-time activation, `IpAccessList`, and the filter and principal that authenticate a recipient request. |
 | `catalog` | The `CatalogConnector` trait a new catalog implements and the types it exchanges, including `CatalogCaller`. Each implementation gets a subpackage: `catalog.local` is the file-backed one. |
-| `protocol` | Every wire shape the spec defines, inbound and outbound, and nothing else: `Share`, `Schema`, `Table`, `TemporaryCredentials` and its request body, and the profile file. No behaviour, no dependencies. |
+| `protocol` | Every wire shape the spec defines, inbound and outbound, and nothing else: `Share`, `Schema`, `Table`, `TemporaryCredentials` and its request body, the profile file, the read-response actions in both formats — `TableAction` is the one line of a response, and each of its slots takes either the parquet shape or the delta one — and the Iceberg REST shapes, whose spelling is Iceberg's rather than this protocol's. No behaviour, no dependencies. |
 | `auth` | Admin authentication, bearer-token extraction and the token hashing every side shares. |
 | `config` | Properties and bean wiring: which catalog, which filters, which argument resolvers, and how the two APIs are published as OpenAPI. |
-| `http` | What both APIs put on the wire regardless of endpoint: the `{errorCode, message}` body with its code vocabulary and status mapping, the `{items, nextPageToken}` envelope with the paging machinery that fills it, `@AdminJson` (the snake_case marker), and the protocol content type. |
+| `http` | What both APIs put on the wire regardless of endpoint: `ApiFailure` (what a failure amounts to — a status, a code and something readable — decided once because it is written down two ways) and the `{errorCode, message}` body most of the protocol answers with, the `{items, nextPageToken}` envelope with the paging machinery that fills it, `@AdminJson` (the snake_case marker), and the protocol content type. |
 
 `serving` sits apart from the per-thing packages because the protocol is a single contract that cuts
 across all of them. One request walks a share, a schema, a table and a format, and a recipient calling
@@ -224,32 +224,106 @@ Everything the spec defines for shares, schemas and tables is served, in both ac
 `version`, `metadata`, `query` and `changes` belong to a table rather than to a format, so the endpoint
 resolves the table and then asks whichever `TableOperations` implementation serves its format. A Delta
 table is answered in full; an Iceberg or bare-parquet table is answered `NOT_IMPLEMENTED` with the route
-that does work, since a recipient asking about a table they hold has asked a reasonable question this
-build cannot yet answer. Everything below describes the Delta implementation, the only one there is.
+that does work, since a recipient asking about a table they hold has asked a reasonable question — for
+an Iceberg table, in the wrong protocol. The rest of this section describes the Delta implementation of
+those four; the Iceberg catalog is below.
 
 These four are url access mode. They read the table's Delta log and answer in newline-delimited JSON,
-one action per line, in the protocol's parquet response format —
-`Delta-Table-Version` on every response, `protocol` and `metaData` lines, and for `query` a `file` line
-per data file carrying a signed url and its expiry. A client can send `delta-sharing-capabilities` to
-say what it accepts; asking for the delta response format alone gets `NOT_IMPLEMENTED`, since only
-parquet format is produced, and asking for `includeEndStreamAction=true` adds the closing line.
+one action per line, with `Delta-Table-Version` on every response: for `query`, the version the files
+came from; for `changes` and for a `startingVersion` query, the version they start at.
+
+Both response formats the protocol defines are produced, and a client says which it can read in
+`delta-sharing-capabilities`. Parquet format states what a recipient needs in order to read each file:
+`protocol` and `metaData` lines, then a `file` line per data file with a signed url and its expiry.
+Delta format wraps the log's own actions instead — `deltaProtocol`, `deltaMetadata`, and a
+`deltaSingleAction` whose path is the signed url — so a recipient can write the response into a local
+Delta log and read the table with a Delta library. That is what carries a table the parquet shape
+cannot describe: deletion vectors are signed alongside the file they belong to and named by
+`deletionVectorFileId`, and column mapping travels in the metadata untouched.
+
+The format is settled once per request, against the table, the way the reference server settles it:
+from the features the table has **turned on** in its own properties — `delta.enableDeletionVectors`
+and `delta.columnMapping.mode` — and not from the reader version its protocol carries. The two come
+apart all the time, because a protocol goes on naming a feature long after the property that enabled
+it was switched off, and a table that merely names one reads like any other. So a client naming one
+format gets it, a client naming both gets parquet whenever the table reads as an ordinary one, and
+silence means parquet, as the spec defines.
+
+That also decides how the table is described. A client that listed no `readerfeatures` is told
+`minReaderVersion` 1 with no features named, since by then nothing needing one is on and a version it
+does not know would only make it refuse a table it can read; a client that listed features is told
+what the log says and can judge for itself.
+
+Three requests are refused rather than answered wrongly. A table using a feature the request did not
+list in `readerfeatures` is a `400` naming the feature and how to ask for it — in either format, since
+the objection is to the reader, not the shape. Parquet for a table using one at all is
+`NOT_IMPLEMENTED` pointing at `responseformat=delta`, which only a client that claimed the feature and
+then asked for parquet alone can reach. And a file carrying a deletion vector in a parquet response is
+`NOT_IMPLEMENTED` too: the table said the feature was off, so the format was settled as parquet, and
+only the file itself reveals that some of its rows are gone. The reference server hands such a file
+over; this one will not, because a recipient would count deleted rows as live ones with nothing to
+tell it otherwise.
+
+The chosen format comes back in the response header, along with `includeendstreamaction=true` when the
+client asked for the closing line and the response carries one. `fileidhash` accepts either scheme:
+ids are derived from a file's path within the table, which is stable across both formats and both
+endpoints.
 
 `changes` answers with the table's history over a window rather than its state: an `add`, `cdf` or
-`remove` line per change file, each carrying the version and commit timestamp a streaming reader
-tracks. Either end of the window can be named by version or by timestamp — `startingVersion` and
-`startingTimestamp` are mutually exclusive, as are the two ending forms — and a timestamp resolves the
-way the spec asks, the start forward to the first version at or after it and the end back to the last
-version at or before it. Omitting the window reads from the table's first version to its latest. The
-`cdf` lines are the before-and-after an update recorded, so they only appear for a window of commits a
-writer made with `delta.enableChangeDataFeed` on; a window without them still reports its adds and
-removes. The metadata sent is the ending version's, so `includeHistoricalMetadata=true` — which asks
-for each schema the window passed through — answers `NOT_IMPLEMENTED` rather than quietly sending one.
+`remove` line per change file in parquet format, or a `file` line wrapping the same action in delta
+format, each carrying the version and commit timestamp a streaming reader tracks. Either end of the
+window can be named by version or by timestamp — `startingVersion` and `startingTimestamp` are mutually
+exclusive, as are the two ending forms — and a timestamp resolves the way the spec asks, the start
+forward to the first version at or after it and the end back to the last version at or before it.
+Omitting the window reads from the table's first version to its latest. The `cdf` lines are the
+before-and-after an update recorded, so they only appear for a window of commits a writer made with
+`delta.enableChangeDataFeed` on; a window without them still reports its adds and removes.
 
-The Iceberg catalog operations are mounted and authorized like the rest but answer `NOT_IMPLEMENTED`
-until the REST catalog is built. Only the `/v1/config` handshake is served, so a client can discover
-the server and learn that it addresses a share as the path prefix `shares/{share}`; that path is where
-the profile file's `icebergEndpoint` points. The volume, skill and model endpoints of the spec are not
-served yet.
+`includeHistoricalMetadata=true` turns the window into a chronology: it opens with the starting
+version's own schema and then reports each change to it, in place among the files, so a stream can tell
+which schema each file was written under. `includeHistoricalProtocol=true` does the same for protocol
+changes, and only in delta format, which is the only one with a line for them — a parquet response has
+nowhere to put one, and a version raised mid-window says nothing a reader of those lines can act on, so
+the window is served through it and each file is judged on its own. Without either flag the window is
+headed by its ending version's metadata, as before.
+
+`query` answers with a snapshot unless it is given `startingVersion`, which asks the other question a
+table can be asked: what has changed since. Then the response carries the files each commit added and
+removed, from that version to `endingVersion` or to the latest, headed by the starting version's own
+protocol and metadata and including the schema changes along the way. The recorded row-level changes of
+a change data feed are not part of it — those belong to `changes`, and a stream rebuilding the table
+from commits would count them twice. `startingVersion` cannot be combined with `version` or
+`timestamp`, which ask what the table held rather than what has happened to it.
+
+The Iceberg REST catalog is served in full, at the path the profile file's `icebergEndpoint` points at.
+`/v1/config` takes the share as its `warehouse` and answers with the path prefix `shares/{share}` a
+client addresses every later call by, and the list of operations that exist here — there is no create,
+drop, rename or commit, because a recipient cannot change a provider's tables.
+
+A share is the warehouse and its schemas are namespaces, so `listNamespaces` and `listTables` show the
+same objects the protocol's own `schemas` and `tables` endpoints do, one level deep and paged with
+`pageSize` and `pageToken`. `listTables` names only the share's Iceberg tables, since a table of
+another format is not one this catalog could hand over; asking for one anyway is a 404, which is what
+"no such table" is to an Iceberg client.
+
+`loadTable` relays the table's own metadata document, read from the `metadataLocation` the catalog
+reports, together with credentials for its storage under both the `config` map and the
+`storage-credentials` list, keyed as Iceberg's file IO reads them (`s3.session-token`,
+`adls.sas-token.<account>`, `gcs.oauth2.token`, each with its expiry). That is the whole of what an
+engine needs: it plans the scan from the metadata and reads the manifests and data files itself, which
+is why nothing here replays a log or signs a data file. The document is passed through untouched — this
+server has no opinion about a format it does not implement — and the metadata file is the only thing it
+reads, through a signed url from the same grant, so it looks inside a table with exactly the access it
+is about to hand over. A pointer that leads outside the shared location is refused rather than
+followed. `reportMetrics` accepts a scan report and drops it: the scan happened on the recipient's
+engine and the numbers are none of this server's business.
+
+Failures on these paths are rendered in Iceberg's own `{"error": {...}}` body rather than the
+protocol's `{errorCode, message}`, because an Iceberg client parses the body to tell a missing table
+from a server it cannot understand. The judgement is the same one every other endpoint makes; only the
+spelling differs.
+
+The volume, skill and model endpoints of the spec are not served yet.
 
 One path is not in the spec as written: `temporary-table-credentials` follows the naming of
 `temporary-volume-credentials` in VOLUMES.md, because TABLES.md links to a
@@ -434,9 +508,44 @@ line or as the upper-case underscored form of the same path in the environment, 
 | `pagination.default-max-results` / `max-max-results` | `500` / `1000` | List page sizes. |
 | `delta.url-access-enabled` | `true` | Read Delta logs and serve `version`, `metadata` and `query`. Off leaves `dir` mode alone and stops `url` being advertised. |
 | `delta.url-ttl` | `1h` | Lifetime of a signed file url, capped by the credentials it was signed with. |
-| `delta.s3-region` | `us-east-1` | Region used to sign S3 urls when the catalog's credentials do not name one. |
+| `storage.s3-region` | `us-east-1` | Region used to read and to sign S3 urls when the catalog's credentials do not name one. |
 | `catalog.type` | `local` | Only `local` is shipped. |
 | `catalog.local.file` | `classpath:local-catalog.yml` | Spring resource location of the catalog file. |
+
+### Reaching storage
+
+Delta Kernel replays a log through Hadoop's filesystem interface, which is how the reference sharing
+server reads a table too, so reading a log on a cloud comes down to two things: a driver for that
+storage, and credentials in the configuration the read is made with.
+
+Four filesystem families ship, one per storage the protocol's own credential shapes name — `s3a` for
+AWS and S3-compatible stores, `abfss` and `wasbs` for Azure, `gs` for Google Cloud Storage — plus
+`hdfs` and local paths, which come with Hadoop itself. A location the catalog reports as `s3://` or
+`s3n://` is addressed as `s3a://`; every other scheme is already what Hadoop calls it. Storage nothing
+here addresses is `NOT_IMPLEMENTED` naming the mode that still works, and so is a driver a deployment
+slimmed out of the jar — neither is anything a request can fix.
+
+The reference server hands Hadoop an empty configuration and lets the machine it runs on supply the
+access, which means one standing set of credentials reads every table. Here a configuration is built
+per read from the credentials the catalog minted for that table's location — the same ones a recipient
+would get from `temporary-table-credentials`, so the server reads a log with exactly the access it
+hands out and one table's credentials are never in reach of another's read:
+
+| Storage | What the driver is given |
+|---|---|
+| AWS, R2 | The session triple as `fs.s3a.access.key`, `.secret.key` and `.session.token`, read by `TemporaryAWSCredentialsProvider`, with `fs.s3a.endpoint.region` from the catalog or `storage.s3-region` so no read waits on instance metadata for a region already known. |
+| Azure | The user delegation SAS itself, as `fs.azure.sas.fixed.token` under SAS auth. The token is the grant, so it is handed over rather than minted from a key. |
+| Google | The OAuth token, through `VendedGcsToken`. Google's connector takes credentials only from a provider class it instantiates, so the token travels in the configuration under a key of this server's own and is read back there. |
+
+Two cases fall through to the deployment's own Hadoop configuration, which `core-site.xml` on the
+classpath supplies as usual: a table the catalog vends nothing for, and Azure's older `wasb`
+filesystem, whose SAS support mints tokens from an account key rather than accepting one. That is the
+reference server's model, kept as the fallback rather than as the rule.
+
+Two dependency choices are worth knowing, since both are visible in the jar's size. The AWS SDK's
+`bundle` artifact is excluded — 686 MB of every service AWS has, where S3A calls four of its modules —
+and Google's connector is taken as the shaded build it publishes for this, keeping gRPC, Guava and
+Gson out of the server.
 
 ### The catalog trait
 
@@ -509,7 +618,7 @@ assets:
     subtype: MANAGED     # optional; recorded on the shared object as source_subtype
     storageLocation: s3://acme-lake/sales/orders/
     format: delta        # delta | iceberg | parquet
-    metadataLocation:    # optional; what a client needs to interpret the bytes
+    metadataLocation:    # what a client needs to interpret the bytes; required of an Iceberg table
       s3://acme-lake/sales/orders/metadata/v3.metadata.json
     schema: '{"type":"struct","fields":[]}'   # optional; as the catalog states it
     auxiliaryLocations:  # optional extra locations credentials may be scoped to
@@ -580,6 +689,31 @@ activation link, a request from outside the IP access list, ungranted shares, an
 tables. Unit tests cover the name rules, the token predicates, the catalog file and the status
 transitions a broken source causes.
 
+The Delta read operations are exercised against hand-written logs under
+`src/test/resources/delta-table`, which is enough because nothing here opens a data file: a table with
+three commits and a change data feed, one whose schema and then protocol change under a reader, one
+using deletion vectors, one that only names the feature while leaving it off, one whose vector outlived
+the setting that made it, and one whose log points at a file it does not own. Between them they cover
+both response formats and the negotiation that picks one, a snapshot and a `startingVersion` window,
+the schema and protocol changes a stream is told about, a deletion vector signed beside its data file,
+and the four refusals that matter — a client that cannot read what the table uses, parquet for a table
+that uses it, a file whose vector no property declares, and a file outside the shared directory.
+
+Reaching storage is tested for what a test can actually know without a cloud: that a driver answers
+every scheme a shared table can live on, and that each provider's credentials arrive under the keys
+its driver reads — including Google's, where the assertion follows the token all the way through the
+provider class the connector instantiates. The tests' own `core-site.xml` points S3 at a port nothing
+listens on, which is what lets the last case be exercised in milliseconds: what a recipient is told
+when a table's storage does not answer.
+
+The Iceberg catalog gets the same treatment against Iceberg metadata documents written to disk, since
+that is all it reads: that a load hands back the document byte for byte and credentials in the keys an
+Iceberg client looks under, that a namespace is a schema and holds only the share's Iceberg tables,
+that a table a whole shared schema brought loads like any other, and that the four refusals come back
+in Iceberg's error shape — another format's table, a catalog that cannot say where the metadata is, a
+pointer out of the shared location, and a namespace deeper than a share has. A unit test pins the
+credential key names per cloud, which are the whole contract with a client.
+
 The published OpenAPI is tested as what it is, a contract a client is generated from: that the two
 APIs stay separate documents, that each is described in the spelling it is served in, that the caller
 the token identifies is not asked for as a parameter, and that a streamed response names its media
@@ -594,9 +728,14 @@ type once.
 - `auth_type: OIDC` on a recipient. It is accepted and stored, but only `TOKEN` is authenticated.
 - Group membership. `PrincipalType.GROUP` exists so a share can be owned by a team, and nothing
   resolves a user to the groups it belongs to yet.
-- The delta response format, and with it any table whose reader version is above 1 — deletion vectors
-  and column mapping among them. Such a table is refused rather than flattened into a parquet-format
-  response a client would misread.
+- Reading a deletion vector, or anything else a data file's bytes would say. Delta format hands a
+  vector's file over signed, exactly as it hands over the data file, and it is the recipient's Delta
+  library that applies it. A recipient that cannot do that has to read the table in `dir` access mode.
+- `tags` on a file action, which delta format leaves behind. Nothing needed to read a table is in
+  them, but a log that carries them is not reproduced exactly.
+- Turning `readerfeatures` into anything but a check. A client that lists a feature is taken at its
+  word, and a table using one the client did not list is refused; the server never rewrites a table
+  into a shape a narrower client could read.
 - A table whose log names files outside its own directory, which a shallow clone writes as absolute
   paths. Signing one would hand a recipient bytes from a location nobody shared, so url access mode
   refuses the table; `dir` access mode still serves what is genuinely under the shared root.
@@ -604,16 +743,27 @@ type once.
   `configuration` are passed through, so column metadata and every table property travel with them.
   The OSS server strips column metadata down to comments and reduces the configuration to
   `enableChangeDataFeed`, and this should do the same.
-- Reading a Delta log on S3, Azure or GCS out of the box. The credential mapping is there, but Kernel
-  reaches storage through Hadoop, so `hadoop-aws` or `hadoop-azure` has to be on the classpath;
-  neither is shipped, because their AWS SDK bundles dwarf the rest of the server. A table on such
-  storage says so, and `dir` access mode works regardless. GCS also needs a signing key to presign,
-  which credential vending does not provide.
+- Reading a Delta log on Azure's older `wasb` filesystem with a vended credential. Its SAS support
+  mints tokens from an account key rather than accepting a token, so such a table is read with the
+  deployment's own Hadoop configuration or not at all; `abfss` takes the SAS the catalog vends, and
+  `dir` access mode works either way. What the other clouds take is under Reaching storage above.
+- Signing a url for a file on Google Cloud Storage. A presigned GCS url is made with a service
+  account's own key, and a vended OAuth token cannot sign one, so the log of such a table is read but
+  its files cannot be handed out; `dir` access mode is the way to read it.
 - Filtering by `predicateHints`, `jsonPredicateHints` or `limitHint`, and paginating a query. All are
   best-effort in the protocol, so every file of the version asked for is returned.
+- Sharing part of a table: a share covers a table whole, with no partition filter, row filter or
+  column mask. Those would mean the server standing between a recipient and the files rather than
+  handing out the ones that already exist.
 - Asynchronous queries and the query-info endpoint they need.
-- The five Iceberg REST catalog operations. The `/v1/config` handshake at `icebergEndpoint` is served;
-  `loadTable` can now be built, since `ResolvedAsset` carries `metadataLocation` and `schema`.
+- Anything of the Iceberg REST catalog beyond the six operations the spec lists. There is no remote
+  signing, no separate credentials endpoint to refresh a grant without loading the table again, and
+  `snapshots=refs` is ignored — the metadata document is relayed whole, so a client gets every
+  snapshot the table has. Multi-level namespaces do not exist here: a share's namespaces are its
+  schemas.
+- `loadTable` on a table whose storage this build cannot sign a url for, which today means GCS. The
+  metadata document is read through a signed url, so the signer that url access mode needs is the same
+  one this needs; `dir` access mode serves such a table regardless.
 - Outbound connection config for a real catalog: an endpoint and an auth mode (OAUTH, BEARER, SIGV4)
   per connector. `CatalogCaller` carries the calling principal's token, but nothing models how to reach
   and authenticate to the catalog itself.

@@ -43,7 +43,8 @@ public record DeltaSnapshot(
       Map<String, String> formatOptions,
       String schemaString,
       List<String> partitionColumns,
-      Map<String, String> configuration) {
+      Map<String, String> configuration,
+      Long createdTime) {
 
     public Metadata {
       formatOptions = formatOptions == null ? Map.of() : Map.copyOf(formatOptions);
@@ -57,12 +58,42 @@ public record DeltaSnapshot(
    *
    * @param path the absolute storage path, which is what gets signed for a recipient
    * @param stats the log's own statistics JSON, passed through untouched, or null if absent
+   * @param deletionVector which rows of the file have since been deleted, or null if none have; only
+   *     the delta response format can carry this, and a table using them is refused in parquet
+   * @param baseRowId row tracking the log may carry, passed through for delta format
    */
   public record File(
-      String path, long size, Map<String, String> partitionValues, String stats) {
+      String path,
+      long size,
+      long modificationTime,
+      boolean dataChange,
+      Map<String, String> partitionValues,
+      String stats,
+      DeletionVector deletionVector,
+      Long baseRowId,
+      Long defaultRowCommitVersion) {
 
     public File {
       partitionValues = partitionValues == null ? Map.of() : Map.copyOf(partitionValues);
+    }
+  }
+
+  /**
+   * A deletion vector as the log records it, plus where its file actually is.
+   *
+   * @param absolutePath the vector's own file, which has to be signed like a data file, or null when
+   *     the vector is inlined in the action and there is no file
+   */
+  public record DeletionVector(
+      String storageType,
+      String pathOrInlineDv,
+      Integer offset,
+      int sizeInBytes,
+      long cardinality,
+      String absolutePath) {
+
+    public boolean isInline() {
+      return absolutePath == null;
     }
   }
 }

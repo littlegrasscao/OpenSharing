@@ -19,9 +19,12 @@ assets:
     storageLocation: s3://acme-lake/sales/orders/
     format: delta
 
+  # An Iceberg table is loaded from the Iceberg REST catalog, which needs the pointer to its current
+  # metadata document; without one the table can only be read in dir access mode.
   - identifier: main.sales.forecast
     subtype: MATERIALIZED_VIEW
     storageLocation: s3://acme-lake/sales/forecast/
+    metadataLocation: s3://acme-lake/sales/forecast/metadata/00003-forecast.metadata.json
     format: iceberg
 
   - identifier: main.research.trial_results

@@ -9,17 +9,16 @@ import io.opensharing.serving.TableRequests;
 import org.springframework.stereotype.Component;
 
 /**
- * An Iceberg table's read operations, which this build does not serve.
+ * An Iceberg table's read operations, which are not served here and are not meant to be.
  *
- * <p>It is registered rather than absent so that the refusal can say something true: the endpoint
- * exists for this table and the recipient asked correctly, but an Iceberg table is read through the
- * Iceberg REST catalog, which is not built yet. Until it is, dir access mode serves these tables in
- * full — {@code temporary-table-credentials} and the table's storage location are enough for an engine
- * that can read Iceberg itself.
+ * <p>These four are the Delta Sharing read operations: a version, a metadata line, a list of signed
+ * files, a change feed. An Iceberg table answers the same questions through its own catalog API
+ * instead — {@code loadTable} hands over the table's metadata document and credentials for its
+ * files, and an engine that reads Iceberg does the rest. So this refuses and says where to go, rather
+ * than inventing a translation between two protocols that both already work.
  *
- * <p>The four operations are also not simply Delta's with another name: a snapshot is named by an
- * Iceberg snapshot id, and files come from manifests rather than a log, so this is a place to fill in
- * rather than a case to fold into the Delta implementation.
+ * <p>It is registered rather than absent so the refusal can be specific: the endpoint exists for
+ * this table and the recipient asked correctly, but asked in the wrong protocol.
  */
 @Component
 public class IcebergTableOperations implements TableOperations {
@@ -55,7 +54,8 @@ public class IcebergTableOperations implements TableOperations {
             + what
             + " for the Iceberg table '"
             + table.getSharedAsName()
-            + "' requires the Iceberg REST catalog, which this build does not serve yet; call "
-            + "temporary-table-credentials and read the table's storage location directly");
+            + "' is not how an Iceberg table is read; load it from the Iceberg REST catalog at the "
+            + "profile file's icebergEndpoint, or call temporary-table-credentials and read its "
+            + "storage location directly");
   }
 }

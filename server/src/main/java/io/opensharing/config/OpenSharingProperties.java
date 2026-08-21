@@ -15,6 +15,7 @@ public class OpenSharingProperties {
   private final RecipientTokens recipientTokens = new RecipientTokens();
   private final AssetCredentials assetCredentials = new AssetCredentials();
   private final Pagination pagination = new Pagination();
+  private final Storage storage = new Storage();
   private final Delta delta = new Delta();
   private final Catalog catalog = new Catalog();
 
@@ -23,7 +24,18 @@ public class OpenSharingProperties {
   }
 
   public void setProtocolPrefix(String protocolPrefix) {
-    this.protocolPrefix = protocolPrefix;
+    this.protocolPrefix = prefix(protocolPrefix);
+  }
+
+  /**
+   * A url prefix without its trailing slash, kept that way here so that everything appending to
+   * one — a filter's url pattern, an OpenAPI path match, a route the server builds — appends to a
+   * known shape instead of each trimming first.
+   */
+  private static String prefix(String value) {
+    return value != null && value.length() > 1 && value.endsWith("/")
+        ? value.substring(0, value.length() - 1)
+        : value;
   }
 
   public Admin getAdmin() {
@@ -44,6 +56,10 @@ public class OpenSharingProperties {
 
   public Pagination getPagination() {
     return pagination;
+  }
+
+  public Storage getStorage() {
+    return storage;
   }
 
   public Delta getDelta() {
@@ -72,7 +88,7 @@ public class OpenSharingProperties {
     }
 
     public void setBasePath(String basePath) {
-      this.basePath = basePath;
+      this.basePath = prefix(basePath);
     }
 
     public String getBootstrapToken() {
@@ -100,7 +116,7 @@ public class OpenSharingProperties {
     }
 
     public void setBasePath(String basePath) {
-      this.basePath = basePath;
+      this.basePath = prefix(basePath);
     }
 
     public Duration getTtl() {
@@ -186,6 +202,21 @@ public class OpenSharingProperties {
     }
   }
 
+  /** Reaching the storage a shared table lives in, whatever the table's format. */
+  public static class Storage {
+
+    /** Region used to sign S3 urls when the catalog's credentials do not name one. */
+    private String s3Region = "us-east-1";
+
+    public String getS3Region() {
+      return s3Region;
+    }
+
+    public void setS3Region(String s3Region) {
+      this.s3Region = s3Region;
+    }
+  }
+
   /** Serving Delta tables by url: reading their log and handing out signed file urls. */
   public static class Delta {
 
@@ -198,9 +229,6 @@ public class OpenSharingProperties {
 
     /** How long a signed file url stays valid. Never outlives the credentials it was signed with. */
     private Duration urlTtl = Duration.ofHours(1);
-
-    /** Region used to sign S3 urls when the catalog's credentials do not name one. */
-    private String s3Region = "us-east-1";
 
     public boolean isUrlAccessEnabled() {
       return urlAccessEnabled;
@@ -216,14 +244,6 @@ public class OpenSharingProperties {
 
     public void setUrlTtl(Duration urlTtl) {
       this.urlTtl = urlTtl;
-    }
-
-    public String getS3Region() {
-      return s3Region;
-    }
-
-    public void setS3Region(String s3Region) {
-      this.s3Region = s3Region;
     }
   }
 

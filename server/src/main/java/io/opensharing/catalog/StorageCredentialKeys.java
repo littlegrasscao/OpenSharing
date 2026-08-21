@@ -9,5 +9,8 @@ public final class StorageCredentialKeys {
   public static final String SAS_TOKEN = "sasToken";
   public static final String OAUTH_TOKEN = "oauthToken";
 
+  /** Region the credentials are good for, as an Iceberg REST catalog reports it beside them. */
+  public static final String REGION = "region";
+
   private StorageCredentialKeys() {}
 }

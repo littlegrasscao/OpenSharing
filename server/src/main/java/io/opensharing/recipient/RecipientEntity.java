@@ -16,6 +16,7 @@ import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,10 +80,6 @@ public class RecipientEntity extends BaseEntity {
     this.nameLower = ObjectNames.normalize(name);
   }
 
-  public String getNameLower() {
-    return nameLower;
-  }
-
   public AuthType getAuthType() {
     return authType;
   }
@@ -115,16 +112,22 @@ public class RecipientEntity extends BaseEntity {
     this.updatedBy = updatedBy;
   }
 
+  /** Read-only, for the same reason as {@link #getProperties()}. */
   public List<String> getIpAccessList() {
-    return ipAccessList;
+    return Collections.unmodifiableList(ipAccessList);
   }
 
   public void setIpAccessList(List<String> ipAccessList) {
     this.ipAccessList = ipAccessList == null ? new ArrayList<>() : new ArrayList<>(ipAccessList);
   }
 
+  /**
+   * Read-only, so a caller reading a recipient's properties cannot quietly rewrite the row behind
+   * it: what Hibernate hands back is the persistent collection itself, and a change to it is a
+   * change to the entity whether or not anyone meant one.
+   */
   public Map<String, String> getProperties() {
-    return properties;
+    return Collections.unmodifiableMap(properties);
   }
 
   public void setProperties(Map<String, String> properties) {

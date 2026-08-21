@@ -18,9 +18,7 @@ final class SharedAliases {
    * main.sales} appear under the schema {@code sales}.
    */
   static String schema(String sharedAs) {
-    if (sharedAs == null || sharedAs.isBlank()) {
-      throw new IllegalArgumentException("shared_as must not be blank");
-    }
+    requireStated(sharedAs);
     if (sharedAs.contains(".")) {
       throw new IllegalArgumentException(
           "a schema is shared as a one-level name, got '" + sharedAs + "'");
@@ -34,9 +32,7 @@ final class SharedAliases {
   }
 
   static String[] split(String sharedAs) {
-    if (sharedAs == null || sharedAs.isBlank()) {
-      throw new IllegalArgumentException("shared_as must not be blank");
-    }
+    requireStated(sharedAs);
     String[] parts = sharedAs.split("\\.", -1);
     if (parts.length != 2) {
       throw new IllegalArgumentException(
@@ -45,6 +41,12 @@ final class SharedAliases {
     ObjectNames.validateSchemaName(parts[0]);
     ObjectNames.validateAssetName(parts[1]);
     return parts;
+  }
+
+  private static void requireStated(String sharedAs) {
+    if (sharedAs == null || sharedAs.isBlank()) {
+      throw new IllegalArgumentException("shared_as must not be blank");
+    }
   }
 
   static String defaultFor(String catalogName) {

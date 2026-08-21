@@ -53,7 +53,7 @@ public class RecipientAdminController {
       Caller caller, @Valid @RequestBody CreateRecipientRequest request) {
     return CreatedRecipientResponse.from(
         recipients.create(
-            author(caller),
+            principals.require(caller),
             request.name(),
             request.authType(),
             request.ipAccessList(),
@@ -80,12 +80,12 @@ public class RecipientAdminController {
       @RequestBody UpdateRecipientRequest request) {
     return withTokens(
         recipients.update(
-            author(caller), recipient, request.ipAccessList(), request.properties()));
+            principals.require(caller), recipient, request.ipAccessList(), request.properties()));
   }
 
   @DeleteMapping("/{recipient}")
   public ResponseEntity<Void> delete(Caller caller, @PathVariable String recipient) {
-    recipients.delete(recipient, author(caller));
+    recipients.delete(recipient, principals.require(caller));
     return ResponseEntity.noContent().build();
   }
 
@@ -100,7 +100,7 @@ public class RecipientAdminController {
       @PathVariable String recipient,
       @RequestBody(required = false) RotateTokenRequest request) {
     RotateTokenRequest effective = request == null ? RotateTokenRequest.DEFAULTS : request;
-    PrincipalEntity author = author(caller);
+    PrincipalEntity author = principals.require(caller);
     RecipientTokenService.IssuedToken issued =
         tokenService.rotate(
             recipients.requireOwned(recipient, author),
@@ -124,9 +124,5 @@ public class RecipientAdminController {
     return RecipientResponse.withTokens(
         recipient,
         tokenService.listTokens(recipient).stream().map(TokenResponse::from).toList());
-  }
-
-  private PrincipalEntity author(Caller caller) {
-    return principals.requireById(caller.principalId());
   }
 }

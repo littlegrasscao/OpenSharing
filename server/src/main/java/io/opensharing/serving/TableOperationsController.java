@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opensharing.asset.SharedDataObjectEntity;
 import io.opensharing.asset.SharedTableService;
+import io.opensharing.http.ProtocolMediaType;
 import io.opensharing.protocol.QueryTableRequest;
 import io.opensharing.protocol.TableAction;
 import io.opensharing.recipient.RecipientPrincipal;
@@ -34,9 +35,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping(RecipientApi.TABLE)
 public class TableOperationsController {
-
-  /** Spelled the way a parsed media type renders, so the published API lists it once. */
-  private static final String NDJSON = "application/x-ndjson;charset=utf-8";
 
   private final ShareAccessService access;
   private final SharedTableService tables;
@@ -73,7 +71,7 @@ public class TableOperationsController {
         .build();
   }
 
-  @GetMapping(value = "/metadata", produces = NDJSON)
+  @GetMapping(value = "/metadata", produces = ProtocolMediaType.NDJSON_UTF8)
   public ResponseEntity<String> metadata(
       RecipientPrincipal principal,
       @PathVariable String share,
@@ -89,7 +87,7 @@ public class TableOperationsController {
             .metadata(object, new TableRequests.Metadata(version, timestamp, capabilities)));
   }
 
-  @PostMapping(value = "/query", produces = NDJSON)
+  @PostMapping(value = "/query", produces = ProtocolMediaType.NDJSON_UTF8)
   public ResponseEntity<String> query(
       RecipientPrincipal principal,
       @PathVariable String share,
@@ -110,7 +108,7 @@ public class TableOperationsController {
    * The change data feed: what happened to the table over a window of versions, rather than what it
    * holds now.
    */
-  @GetMapping(value = "/changes", produces = NDJSON)
+  @GetMapping(value = "/changes", produces = ProtocolMediaType.NDJSON_UTF8)
   public ResponseEntity<String> changes(
       RecipientPrincipal principal,
       @PathVariable String share,
@@ -121,6 +119,7 @@ public class TableOperationsController {
       @RequestParam(required = false) Long endingVersion,
       @RequestParam(required = false) String endingTimestamp,
       @RequestParam(required = false, defaultValue = "false") boolean includeHistoricalMetadata,
+      @RequestParam(required = false, defaultValue = "false") boolean includeHistoricalProtocol,
       @RequestHeader(name = ProtocolHeaders.CAPABILITIES, required = false) String capabilities,
       @RequestHeader(name = ProtocolHeaders.FILE_ID_HASH, required = false) String fileIdHash) {
     SharedDataObjectEntity object = require(principal, share, schema, table);
@@ -135,6 +134,7 @@ public class TableOperationsController {
                     endingVersion,
                     endingTimestamp,
                     includeHistoricalMetadata,
+                    includeHistoricalProtocol,
                     capabilities,
                     fileIdHash)));
   }

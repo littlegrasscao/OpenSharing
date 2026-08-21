@@ -109,8 +109,18 @@ step "Recipient asks for scoped, short-lived storage credentials (dir access mod
 curl -sS -X POST "$PROTOCOL/shares/$SHARE/schemas/sales/tables/orders/temporary-table-credentials" \
   -H "Authorization: Bearer $TOKEN" | jq .
 
-step "Url access mode reads the table's Delta log, which needs a driver for the storage it is on"
+step "Url access mode reads the log where the catalog put it: an S3 bucket nobody owns here"
 recipient "/shares/$SHARE/schemas/sales/tables/orders/metadata" | jq .
+
+step "An Iceberg engine browses the same share as a warehouse, through the Iceberg REST catalog"
+recipient "/iceberg/v1/config?warehouse=$SHARE" | jq .
+ICEBERG="/iceberg/v1/shares/$SHARE"
+recipient "$ICEBERG/namespaces" | jq -c .
+echo "only the Iceberg tables of the namespace, since the others it could not load:"
+recipient "$ICEBERG/namespaces/sales/tables" | jq -c .
+
+step "Loading one relays its metadata document, which here is a file on S3 nobody wrote"
+recipient "$ICEBERG/namespaces/sales/tables/forecast" | jq .
 
 step "Rotation mints a replacement and gives the old token a grace window"
 NEXT_URL=$(admin POST "/recipients/$RECIPIENT/rotate-token" \
