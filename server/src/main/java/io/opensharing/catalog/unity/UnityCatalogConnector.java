@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -191,15 +192,24 @@ public final class UnityCatalogConnector implements CatalogConnector {
             + "tables individually");
   }
 
+  /**
+   * The shareable tables of one page, each counted once. A schema holds no two tables of the same
+   * name, so a name arriving twice is a catalog whose pages overlap — one that repeats a page token
+   * hands out the same page again — and listing it twice would show a recipient two of the same
+   * table.
+   */
   private void collect(
       AssetLookup parent, UnityCatalogApi.ListTablesResponse page, List<ResolvedAsset> into) {
     if (page.tables() == null) {
       return;
     }
+    Set<String> listed = into.stream().map(ResolvedAsset::identifier).collect(Collectors.toSet());
     for (UnityCatalogApi.TableInfo info : page.tables()) {
       String identifier = info.fullName();
       String refused =
-          identifier == null ? "is named only in part by the catalog" : unshareable(info);
+          identifier == null
+              ? "is named only in part by the catalog"
+              : listed.contains(identifier) ? "was listed by an earlier page already" : unshareable(info);
       if (refused != null) {
         log.debug(
             "Leaving '{}' out of the tables of '{}': it {}",
@@ -367,37 +377,62 @@ public final class UnityCatalogConnector implements CatalogConnector {
             : Instant.ofEpochMilli(minted.expirationTime());
     if (minted.awsTempCredentials() != null) {
       UnityCatalogApi.AwsCredentials aws = minted.awsTempCredentials();
-      return new StorageCredentials(
-          prefix(request, minted),
-          CloudProvider.AWS,
-          values(
-              StorageCredentialKeys.ACCESS_KEY_ID, aws.accessKeyId(),
-              StorageCredentialKeys.SECRET_ACCESS_KEY, aws.secretAccessKey(),
-              StorageCredentialKeys.SESSION_TOKEN, aws.sessionToken()),
-          expiration);
+      return stated(
+          request,
+          new StorageCredentials(
+              prefix(request, minted),
+              CloudProvider.AWS,
+              values(
+                  StorageCredentialKeys.ACCESS_KEY_ID, aws.accessKeyId(),
+                  StorageCredentialKeys.SECRET_ACCESS_KEY, aws.secretAccessKey(),
+                  StorageCredentialKeys.SESSION_TOKEN, aws.sessionToken()),
+              expiration));
     }
     if (minted.azureUserDelegationSas() != null) {
-      return new StorageCredentials(
-          prefix(request, minted),
-          CloudProvider.AZURE,
-          values(StorageCredentialKeys.SAS_TOKEN, minted.azureUserDelegationSas().sasToken()),
-          expiration);
+      return stated(
+          request,
+          new StorageCredentials(
+              prefix(request, minted),
+              CloudProvider.AZURE,
+              values(StorageCredentialKeys.SAS_TOKEN, minted.azureUserDelegationSas().sasToken()),
+              expiration));
     }
     if (minted.gcpOauthToken() != null) {
-      return new StorageCredentials(
-          prefix(request, minted),
-          CloudProvider.GCP,
-          values(StorageCredentialKeys.OAUTH_TOKEN, minted.gcpOauthToken().oauthToken()),
-          expiration);
+      return stated(
+          request,
+          new StorageCredentials(
+              prefix(request, minted),
+              CloudProvider.GCP,
+              values(StorageCredentialKeys.OAUTH_TOKEN, minted.gcpOauthToken().oauthToken()),
+              expiration));
     }
     if (StoragePaths.isLocal(request.storageLocation())) {
       return null;
     }
-    throw new CatalogException(
-        "the Unity Catalog vended no credentials for '"
-            + request.identifier()
-            + "', which is what it answers when it holds no storage configuration for "
-            + request.storageLocation());
+    log.error(
+        "The Unity Catalog vended no credentials for '{}' on {}, which is what it answers when it "
+            + "holds no storage configuration covering that location",
+        request.identifier(),
+        request.storageLocation());
+    throw new CatalogException("the Unity Catalog vended no credentials for this table");
+  }
+
+  /**
+   * A credential block the catalog sent but put nothing in. Refused here, so the complaint is about
+   * the catalog's answer; left alone it becomes a credential holding no values, and the read gets as
+   * far as signing a url before failing about a missing field. Which table, and which shape came back
+   * empty, are for the log — a recipient reaches this too.
+   */
+  private static StorageCredentials stated(
+      CredentialRequest request, StorageCredentials credentials) {
+    if (credentials.credentials().isEmpty()) {
+      log.error(
+          "The Unity Catalog minted a {} credential for '{}' with nothing in it",
+          credentials.provider(),
+          request.identifier());
+      throw new CatalogException("the Unity Catalog minted a credential with nothing in it");
+    }
+    return credentials;
   }
 
   /**

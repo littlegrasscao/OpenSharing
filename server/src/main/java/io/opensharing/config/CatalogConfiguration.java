@@ -80,10 +80,26 @@ public class CatalogConfiguration {
               + UnityCatalogConnector.NAME
               + "' connector, e.g. http://localhost:8081/api/2.1/unity-catalog");
     }
-    URI parsed = URI.create(uri);
+    URI parsed;
+    try {
+      parsed = URI.create(uri);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException(
+          "opensharing.catalog.unity.uri '" + uri + "' is not a url", e);
+    }
     if (!parsed.isAbsolute() || parsed.getHost() == null) {
       throw new IllegalStateException(
           "opensharing.catalog.unity.uri '" + uri + "' is not an absolute http or https url");
+    }
+    // Each request appends its own path and query to this, so anything already carrying one would
+    // build a url with the parts in the wrong order — a query before a path, or a fragment before
+    // both — and every request would go somewhere unintended. Said here, because there is no request
+    // to blame it on and nothing about the url changes between startup and the first read.
+    if (parsed.getQuery() != null || parsed.getFragment() != null) {
+      throw new IllegalStateException(
+          "opensharing.catalog.unity.uri '"
+              + uri
+              + "' must be a base url with no query or fragment, since each request appends its own");
     }
     return new UnityCatalogConnector(
         parsed, config.getConnectTimeout(), config.getRequestTimeout());

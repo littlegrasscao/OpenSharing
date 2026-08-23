@@ -452,7 +452,10 @@ class UnityCatalogConnectorTest {
         assertThrows(
             CatalogException.class,
             () -> connector.getStorageCredentials(readOf(ORDERS, "table-1"), ALICE));
-    assertTrue(failed.getMessage().contains("s3://lake/sales/orders/"), failed.getMessage());
+    assertTrue(failed.getMessage().contains("vended no credentials"), failed.getMessage());
+    assertFalse(
+        failed.getMessage().contains("s3://lake/sales/orders/"),
+        "which bucket the table is on is in the log, not in what a recipient reads");
   }
 
   /**
@@ -544,6 +547,92 @@ class UnityCatalogConnectorTest {
     assertEquals(List.of(), catalog.requests(), "there is nothing to ask the catalog for");
   }
 
+  /**
+   * A name is one path segment however it is spelled. Without escaping, a table whose name holds a
+   * slash would address a different endpoint altogether — the request would leave the collection it
+   * was meant for — and a space would not make a valid request line at all.
+   */
+  @Test
+  void keepsAnAwkwardNameInsideOnePathSegment() {
+    catalog.answers("GET /tables/main.sales.a%20b%2Fc", 200, DELTA_TABLE);
+
+    connector.resolveAsset(AssetLookup.of(AssetType.TABLE, "main.sales.a b/c"), ALICE);
+
+    assertEquals("/tables/main.sales.a%20b%2Fc", catalog.lastRequest().path());
+  }
+
+  @Test
+  void readsASchemaThatIsGoneAsMissing() {
+    catalog.answers("GET /tables", 404, """
+        {"error_code": "SCHEMA_DOES_NOT_EXIST", "message": "Schema does not exist"}
+        """);
+
+    assertThrows(
+        AssetNotFoundException.class,
+        () -> connector.listChildren(AssetLookup.of(AssetType.SCHEMA, "main.sales"), ALICE));
+  }
+
+  /**
+   * A catalog that keeps handing out the same page token would otherwise be followed forever. Taken
+   * as the end of the listing, since a token that does not advance describes no further page.
+   */
+  @Test
+  void stopsWhenTheCatalogRepeatsAPageToken() {
+    catalog.answers(
+        "GET /tables",
+        200,
+        """
+        {"tables": [%s], "next_page_token": "stuck"}
+        """
+            .formatted(DELTA_TABLE));
+
+    assertEquals(
+        1,
+        connector.listChildren(AssetLookup.of(AssetType.SCHEMA, "main.sales"), ALICE).size(),
+        "the page that repeats itself is counted once");
+  }
+
+  /**
+   * And one that keeps advancing is followed only so far. A schema of that size is not one to
+   * assemble per listing, so the provider is told to share its tables instead.
+   */
+  @Test
+  void refusesASchemaWithMorePagesThanItWillFollow() {
+    for (int page = 0; page < 201; page++) {
+      catalog.answers(
+          "GET /tables",
+          200,
+          """
+          {"tables": [], "next_page_token": "page-%d"}
+          """
+              .formatted(page));
+    }
+
+    CatalogException refused =
+        assertThrows(
+            CatalogException.class,
+            () -> connector.listChildren(AssetLookup.of(AssetType.SCHEMA, "main.sales"), ALICE));
+
+    assertTrue(refused.getMessage().contains("share its tables individually"), refused.getMessage());
+  }
+
+  /**
+   * A credential block with nothing in it is the catalog answering wrongly, and is refused as that.
+   * Passed on, it would become a credential holding no values and fail while signing a url, which
+   * says nothing about where the trouble came from.
+   */
+  @Test
+  void refusesACredentialWithNothingInIt() {
+    catalog.answers("POST /temporary-table-credentials", 200, """
+        {"aws_temp_credentials": {}, "url": "s3://lake/sales/"}
+        """);
+
+    CatalogException refused = assertThrows(CatalogException.class, this::vend);
+
+    assertTrue(refused.getMessage().contains("nothing in it"), refused.getMessage());
+    assertFalse(refused.getMessage().contains(ORDERS), "the table it was for is in the log");
+  }
+
   private List<StorageCredentials> vend() {
     return connector.getStorageCredentials(readOf(ORDERS, "table-1"), ALICE);
   }
@@ -594,7 +683,9 @@ class UnityCatalogConnectorTest {
     }
 
     private void handle(HttpExchange exchange) throws IOException {
-      String path = exchange.getRequestURI().getPath().substring(BASE_PATH.length());
+      // The raw path, so that a test can tell a name with a slash escaped into one segment from one
+      // that broke out into two: decoding turns both into the same string.
+      String path = exchange.getRequestURI().getRawPath().substring(BASE_PATH.length());
       String body = new String(exchange.getRequestBody().readAllBytes(), UTF_8);
       requests.add(
           new Recorded(
