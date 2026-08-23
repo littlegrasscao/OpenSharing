@@ -488,6 +488,34 @@ class UnityCatalogConnectorTest {
   }
 
   /**
+   * Unity Catalog mints in more shapes than this build reads. Offering dir mode for one of the others
+   * would take the table into a share and then fail every vend, so the mode is not offered and the
+   * table stands or falls by url access like any other.
+   */
+  @Test
+  void offersNoDirectoryAccessForStorageItCouldNotReadTheGrantFor() {
+    catalog.answers(
+        "GET /tables/main.sales.on_r2",
+        200,
+        """
+        {
+          "name": "on_r2",
+          "full_name": "main.sales.on_r2",
+          "table_type": "EXTERNAL",
+          "data_source_format": "DELTA",
+          "storage_location": "r2://lake/sales/on_r2",
+          "table_id": "3c1de0b2-8a54-4b6f-9d34-77a2f0c1e5aa"
+        }
+        """);
+
+    assertEquals(
+        Set.of(),
+        connector
+            .resolveAsset(AssetLookup.of(AssetType.TABLE, "main.sales.on_r2"), ALICE)
+            .accessModes());
+  }
+
+  /**
    * The same empty answer about a table on disk is Unity Catalog saying there is nothing to hand
    * out, which is how it treats a {@code file:} location itself: it hands its own reader no
    * credentials and opens the file. Passed on as an empty vend, so the layers above read the table

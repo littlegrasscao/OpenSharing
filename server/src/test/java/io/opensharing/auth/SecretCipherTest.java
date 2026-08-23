@@ -17,17 +17,19 @@ class SecretCipherTest {
 
   private static final String KEY = base64Key(32, 1);
   private static final String SECRET = "dapi-a-catalog-token";
+  private static final String ALICE = "941a703c-ff3c-4d6f-8fb8-0e5aca154ed4";
+  private static final String BOB = "6b1e0d6c-6a4a-4a2f-9c1f-2d3b4c5d6e7f";
 
   @Test
   void readsBackWhatItSealed() {
     SecretCipher cipher = cipherWith(KEY);
 
-    assertEquals(SECRET, cipher.decrypt(cipher.encrypt(SECRET)));
+    assertEquals(SECRET, cipher.decrypt(cipher.encrypt(SECRET, ALICE), ALICE));
   }
 
   @Test
   void storesSomethingThatLooksNothingLikeTheSecret() {
-    String stored = cipherWith(KEY).encrypt(SECRET);
+    String stored = cipherWith(KEY).encrypt(SECRET, ALICE);
 
     assertTrue(stored.startsWith("v1."), "the stored form says what it is");
     assertFalse(stored.contains(SECRET));
@@ -38,7 +40,7 @@ class SecretCipherTest {
     SecretCipher cipher = cipherWith(KEY);
 
     assertNotEquals(
-        cipher.encrypt(SECRET), cipher.encrypt(SECRET), "a fresh nonce per encryption");
+        cipher.encrypt(SECRET, ALICE), cipher.encrypt(SECRET, ALICE), "a fresh nonce per encryption");
   }
 
   /**
@@ -47,10 +49,10 @@ class SecretCipherTest {
    */
   @Test
   void refusesToReadWithADifferentKey() {
-    String stored = cipherWith(KEY).encrypt(SECRET);
+    String stored = cipherWith(KEY).encrypt(SECRET, ALICE);
 
     ApiException failure =
-        assertThrows(ApiException.class, () -> cipherWith(base64Key(32, 2)).decrypt(stored));
+        assertThrows(ApiException.class, () -> cipherWith(base64Key(32, 2)).decrypt(stored, ALICE));
 
     assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, failure.getStatus());
     assertTrue(failure.getMessage().contains("cannot be served"));
@@ -61,7 +63,7 @@ class SecretCipherTest {
 
   @Test
   void refusesToReadSomethingThatWasAltered() {
-    String stored = cipherWith(KEY).encrypt(SECRET);
+    String stored = cipherWith(KEY).encrypt(SECRET, ALICE);
     // A byte in the middle, so the change lands on ciphertext and is a change whatever it encoded:
     // rewriting the tail could reproduce the character already there and tamper with nothing.
     char[] altered = stored.toCharArray();
@@ -69,7 +71,7 @@ class SecretCipherTest {
     altered[middle] = altered[middle] == 'A' ? 'B' : 'A';
 
     assertNotEquals(stored, new String(altered), "the test must actually alter something");
-    assertThrows(ApiException.class, () -> cipherWith(KEY).decrypt(new String(altered)));
+    assertThrows(ApiException.class, () -> cipherWith(KEY).decrypt(new String(altered), ALICE));
   }
 
   @Test
@@ -77,15 +79,15 @@ class SecretCipherTest {
     SecretCipher cipher = cipherWith(KEY);
 
     // What a row written before this scheme existed looks like, and the reason for the version tag.
-    assertThrows(ApiException.class, () -> cipher.decrypt("dapi-a-bare-token"));
+    assertThrows(ApiException.class, () -> cipher.decrypt("dapi-a-bare-token", ALICE));
     // And a sealed value too short to hold even the nonce, which is a length check, not a tag one.
-    assertThrows(ApiException.class, () -> cipher.decrypt("v1.QUJD"));
+    assertThrows(ApiException.class, () -> cipher.decrypt("v1.QUJD", ALICE));
   }
 
   @Test
   void readsNothingBackWithoutAKey() {
     ApiException failure =
-        assertThrows(ApiException.class, () -> cipherWith(null).decrypt("v1.anything"));
+        assertThrows(ApiException.class, () -> cipherWith(null).decrypt("v1.anything", ALICE));
 
     assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, failure.getStatus());
   }
@@ -99,7 +101,7 @@ class SecretCipherTest {
   void storesNothingWithoutAKey() {
     SecretCipher cipher = cipherWith(null);
 
-    ApiException failure = assertThrows(ApiException.class, () -> cipher.encrypt(SECRET));
+    ApiException failure = assertThrows(ApiException.class, () -> cipher.encrypt(SECRET, ALICE));
     assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, failure.getStatus());
     assertTrue(failure.getMessage().contains("credential-encryption-key"));
   }
@@ -116,15 +118,37 @@ class SecretCipherTest {
     return new SecretCipher(properties);
   }
 
+  /**
+   * The substitution the sealing exists to stop: whoever can write the table copies one provider's
+   * credential into another's row, and every read through the second provider's shares would then be
+   * made to the catalog with the first one's privileges. It does not decrypt there.
+   */
+  @Test
+  void refusesToReadASecretSealedToSomebodyElse() {
+    SecretCipher cipher = cipherWith(KEY);
+    String alices = cipher.encrypt(SECRET, ALICE);
+
+    assertThrows(ApiException.class, () -> cipher.decrypt(alices, BOB));
+    assertEquals(SECRET, cipher.decrypt(alices, ALICE), "and still reads in the row it belongs to");
+  }
+
+  @Test
+  void sealsToSomebody() {
+    SecretCipher cipher = cipherWith(KEY);
+
+    assertThrows(IllegalArgumentException.class, () -> cipher.encrypt(SECRET, " "));
+    assertThrows(IllegalArgumentException.class, () -> cipher.encrypt(SECRET, null));
+  }
+
   /** A token the length of a JWT, which is what a catalog credential often is. */
   @Test
   void sealsATokenAsLongAsARealOne() {
     String jwt = "ey" + "A".repeat(2046);
     SecretCipher cipher = cipherWith(KEY);
 
-    String stored = cipher.encrypt(jwt);
+    String stored = cipher.encrypt(jwt, ALICE);
 
-    assertEquals(jwt, cipher.decrypt(stored));
+    assertEquals(jwt, cipher.decrypt(stored, ALICE));
     assertTrue(stored.length() < 4096, "and the stored form still fits its column: " + stored.length());
   }
 

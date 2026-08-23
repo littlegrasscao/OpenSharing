@@ -27,6 +27,7 @@ import io.opensharing.catalog.StorageCredentialKeys;
 import io.opensharing.catalog.StorageCredentials;
 import io.opensharing.catalog.StorageOperation;
 import io.opensharing.catalog.TableFormat;
+import io.opensharing.catalog.UnsupportedAssetTypeException;
 import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
 import io.opensharing.principal.PrincipalEntity;
@@ -212,6 +213,32 @@ class AssetResolutionServiceTest {
     assertFalse(
         failure.getMessage().contains("alice-catalog-credential"),
         "and neither is what they were asked as");
+  }
+
+  /**
+   * A table shareable when it was added can stop being one — recreated as CSV, or replaced by a view.
+   * The request has not changed, so answering that it is invalid would blame the recipient for the
+   * catalog's doing, on every read from now on. It is withdrawn instead, and what it became is left
+   * to the log rather than told to whoever asked.
+   */
+  @Test
+  void withdrawsATableThatStoppedBeingSomethingItCanShare() {
+    SharedDataObjectEntity object = sharedObject();
+    AssetResolutionService resolution =
+        service(
+            lookup -> {
+              throw new UnsupportedAssetTypeException(
+                  "'" + NAME + "' is CSV in the catalog, and this server shares Delta and Parquet");
+            },
+            request -> List.of());
+
+    ApiException failure =
+        assertThrows(ApiException.class, () -> resolution.resolveForServing(object));
+
+    assertEquals(HttpStatus.NOT_FOUND, failure.getStatus());
+    assertEquals(SharedObjectStatus.SOURCE_NOT_SHAREABLE, object.getStatus());
+    assertFalse(failure.getMessage().contains("CSV"), "what it became is in the log, not the answer");
+    assertFalse(failure.getMessage().contains(NAME), "nor the name it goes by in the catalog");
   }
 
   /**

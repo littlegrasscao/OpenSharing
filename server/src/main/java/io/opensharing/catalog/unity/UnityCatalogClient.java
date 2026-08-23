@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.opensharing.catalog.CatalogCaller;
 import io.opensharing.catalog.CatalogException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -52,6 +53,14 @@ final class UnityCatalogClient {
    */
   private static final int MAX_ERROR_CHARS = 512;
 
+  /**
+   * A ceiling on how much of any answer is held in memory. A catalog describing a table, or a page of
+   * them, runs to kilobytes; nothing legitimate approaches this. It is here because the sharing server
+   * cannot be brought down by whatever is on the other end of that connection — a catalog gone wrong,
+   * or something that is not a catalog at all — and a body read whole with no bound would let it.
+   */
+  private static final int MAX_BODY_BYTES = 32 * 1024 * 1024;
+
   private final URI baseUri;
   private final Duration requestTimeout;
   private final HttpClient http;
@@ -91,9 +100,13 @@ final class UnityCatalogClient {
   }
 
   private <T> T send(HttpRequest request, Class<T> type, String what) {
-    HttpResponse<String> response;
+    int status;
+    String body;
     try {
-      response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      HttpResponse<InputStream> response =
+          http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+      status = response.statusCode();
+      body = bodyOf(response, what);
     } catch (IOException e) {
       log.error("The Unity Catalog at {} could not be reached for {}", baseUri, what, e);
       throw new CatalogException("the Unity Catalog could not be reached");
@@ -101,10 +114,30 @@ final class UnityCatalogClient {
       Thread.currentThread().interrupt();
       throw new CatalogException("the request to the Unity Catalog was interrupted");
     }
-    if (response.statusCode() / 100 != 2) {
-      throw new UnityApiException(response.statusCode(), failureMessage(response, what));
+    if (status / 100 != 2) {
+      throw new UnityApiException(status, failureMessage(status, body, what));
     }
-    return deserialize(response.body(), type, what);
+    return deserialize(body, type, what);
+  }
+
+  /**
+   * The answer, up to {@link #MAX_BODY_BYTES}. One byte past it is enough to know the bound was
+   * exceeded, and the rest is left unread: the stream is closed either way, which also tells the
+   * client the connection is finished with rather than leaving it held.
+   */
+  private String bodyOf(HttpResponse<InputStream> response, String what) throws IOException {
+    try (InputStream stream = response.body()) {
+      byte[] bytes = stream.readNBytes(MAX_BODY_BYTES + 1);
+      if (bytes.length > MAX_BODY_BYTES) {
+        log.error(
+            "The Unity Catalog answered {} with more than {} bytes, which is not an answer this "
+                + "server will read",
+            what,
+            MAX_BODY_BYTES);
+        throw new CatalogException("the Unity Catalog answered with more than this server will read");
+      }
+      return new String(bytes, StandardCharsets.UTF_8);
+    }
   }
 
   /**
@@ -120,9 +153,8 @@ final class UnityCatalogClient {
    * <p>The statuses the connector goes on to explain are logged at debug, since it logs its own line
    * with the asset and caller in it; the rest are this server's problem and are logged as such.
    */
-  private String failureMessage(HttpResponse<String> response, String what) {
-    int status = response.statusCode();
-    String detail = errorMessage(response.body());
+  private String failureMessage(int status, String body, String what) {
+    String detail = errorMessage(body);
     if (status == 401 || status == 403 || status == 404) {
       log.debug("The Unity Catalog answered {} to {}: {}", status, what, detail);
     } else {

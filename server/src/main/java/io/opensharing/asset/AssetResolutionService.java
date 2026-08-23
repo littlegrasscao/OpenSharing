@@ -24,6 +24,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +36,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class AssetResolutionService {
+
+  private static final Logger log = LoggerFactory.getLogger(AssetResolutionService.class);
 
   private final CatalogConnector catalog;
   private final SharedDataObjectStore objects;
@@ -79,7 +83,7 @@ public class AssetResolutionService {
     ResolvedAsset resolved;
     try {
       resolved = catalog.resolveAsset(lookup, shareOwner(object));
-    } catch (AssetNotFoundException | AssetAccessDeniedException e) {
+    } catch (AssetNotFoundException | AssetAccessDeniedException | UnsupportedAssetTypeException e) {
       throw noLongerServable(object, e);
     }
     if (snapshotChanged(object, resolved)) {
@@ -290,6 +294,24 @@ public class AssetResolutionService {
           HttpStatus.NOT_FOUND,
           ErrorCodes.RESOURCE_DOES_NOT_EXIST,
           "'" + object.getName() + "' no longer exists in the " + catalog.name() + " catalog");
+    }
+    // Shareable when it was added, so something in the catalog changed: a table replaced by a view,
+    // or recreated in a format this server does not serve. Withdrawn rather than left to answer that
+    // the request was invalid on every read from now on, which is what it would say — the request is
+    // the same one that worked yesterday. Which asset, and what it became, is in the log with the
+    // catalog's own words, and the recipient is told what they can act on: it is gone from the share.
+    if (withdrawn instanceof UnsupportedAssetTypeException) {
+      log.warn(
+          "'{}' can no longer be shared and has been withdrawn from '{}': {}",
+          object.getName(),
+          object.getShare().getName(),
+          withdrawn.getMessage());
+      return unservable(
+          object,
+          SharedObjectStatus.SOURCE_NOT_SHAREABLE,
+          HttpStatus.NOT_FOUND,
+          ErrorCodes.RESOURCE_DOES_NOT_EXIST,
+          "'" + object.getSharedAs() + "' is no longer available in this share");
     }
     return unservable(
         object,

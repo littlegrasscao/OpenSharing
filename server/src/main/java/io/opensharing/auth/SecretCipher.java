@@ -29,8 +29,9 @@ import org.springframework.stereotype.Component;
  * opensharing.security.credential-encryption-key}, an environment variable, a mounted secret, a KMS.
  *
  * <p>AES-GCM, so a ciphertext cannot be altered undetected, with a fresh random nonce per encryption
- * and the nonce stored alongside. The stored form is versioned, so a later change of algorithm can
- * tell what it is reading rather than guessing.
+ * and the nonce stored alongside. Each is sealed to whoever it belongs to, so it cannot be read from
+ * anybody else's row either. The stored form is versioned, so a later change of algorithm can tell
+ * what it is reading rather than guessing.
  */
 @Component
 public class SecretCipher {
@@ -59,8 +60,11 @@ public class SecretCipher {
    * <p>Only registering a principal reaches this, so the answer is written for the administrator
    * doing it — and reported as this server being unfit rather than their request being wrong, because
    * nothing they could send would work until the deployment has a key.
+   *
+   * @param owner what the secret is sealed to, and must be presented again to read it back. See
+   *     {@link #associatedData}.
    */
-  public String encrypt(String plaintext) {
+  public String encrypt(String plaintext, String owner) {
     if (key == null) {
       throw new ApiException(
           HttpStatus.INTERNAL_SERVER_ERROR,
@@ -74,6 +78,7 @@ public class SecretCipher {
     try {
       Cipher cipher = Cipher.getInstance(TRANSFORMATION);
       cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, nonce));
+      cipher.updateAAD(associatedData(owner));
       byte[] sealed = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
       byte[] stored = new byte[nonce.length + sealed.length];
       System.arraycopy(nonce, 0, stored, 0, nonce.length);
@@ -88,10 +93,13 @@ public class SecretCipher {
    * Reads a stored secret back.
    *
    * <p>Failure here is the deployment's, not the caller's: the key has been changed or lost, or the
-   * stored bytes were altered, and no request can recover from any of them. It is reported as this
-   * server failing rather than as the catalog refusing, so that the thing to go and fix is named.
+   * stored bytes were altered or belong to somebody else, and no request can recover from any of
+   * them. It is reported as this server failing rather than as the catalog refusing, so that the
+   * thing to go and fix is named.
+   *
+   * @param owner whoever the secret was sealed to, which has to be the same to read it back
    */
-  public String decrypt(String stored) {
+  public String decrypt(String stored, String owner) {
     if (key == null) {
       throw failed("no encryption key is configured", null);
     }
@@ -103,11 +111,29 @@ public class SecretCipher {
       Cipher cipher = Cipher.getInstance(TRANSFORMATION);
       cipher.init(
           Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, bytes, 0, NONCE_BYTES));
+      cipher.updateAAD(associatedData(owner));
       return new String(
           cipher.doFinal(bytes, NONCE_BYTES, bytes.length - NONCE_BYTES), StandardCharsets.UTF_8);
     } catch (GeneralSecurityException | IllegalArgumentException e) {
-      throw failed("the configured key does not decrypt it", e);
+      throw failed("the key does not decrypt it, or it was sealed to somebody else", e);
     }
+  }
+
+  /**
+   * What a ciphertext is bound to, so that it cannot be moved to another row and still be read.
+   *
+   * <p>Without this, whoever can write the table — an injection, a restore of another environment's
+   * backup, a database operator — could copy one provider's sealed credential into another's row, and
+   * every recipient read through that second provider's shares would then be made to the catalog with
+   * the first one's privileges. Authenticating the owner alongside the ciphertext makes that
+   * substitution fail instead: the tag no longer matches. The version travels with it, so a stored
+   * form cannot be passed off as one written under different rules either.
+   */
+  private static byte[] associatedData(String owner) {
+    if (owner == null || owner.isBlank()) {
+      throw new IllegalArgumentException("a sealed secret is always sealed to somebody");
+    }
+    return (VERSION + owner).getBytes(StandardCharsets.UTF_8);
   }
 
   /**

@@ -144,9 +144,12 @@ inside it. Those two cascades are the only cross-package writes.
   is a catalog call per listing, and holding a schema's tables in memory to page over them; a share
   with no schema grant keeps the database-paged query it always used.
 - **A broken object stops being served instead of failing forever.** Re-resolution records
-  `SOURCE_NOT_FOUND` or `PERMISSION_DENIED` on the object and recipient-facing queries filter to
-  `ACTIVE`, so a dropped table leaves the listing while staying visible to the admin, and comes back on
-  its own if the catalog resolves it again.
+  `SOURCE_NOT_FOUND`, `PERMISSION_DENIED` or `SOURCE_NOT_SHAREABLE` on the object and recipient-facing
+  queries filter to `ACTIVE`, so a dropped table leaves the listing while staying visible to the admin,
+  and comes back on its own if the catalog resolves it again. The third of those is a table that is
+  still there but is no longer something this server can share — recreated as CSV, or replaced by a
+  view. Answering that the request was invalid would blame a recipient for a change in the catalog, on
+  every read from then on, so it is withdrawn like the others.
 - **The object type is kept as a seam.** Everything stored and served carries an `AssetType`; `TABLE`
   and `SCHEMA` are accepted and the rest are refused explicitly, so adding volumes, skills or models
   later is additive.
@@ -160,7 +163,9 @@ inside it. Those two cascades are the only cross-package writes.
   sealed under `security.credential-encryption-key`: a stolen database alone still yields nothing
   usable, while a stolen database and key together yield every provider's catalog credential. That is
   the price of asking the catalog as the provider at all, and it is why no principal can be registered
-  without a key set.
+  without a key set. Each sealed credential is bound to the row it belongs to, so whoever can write
+  the table cannot move one provider's credential into another's row and have the catalog asked with
+  the wrong privileges — it no longer decrypts there.
 - **A token comes with the recipient, and only rotation replaces it.** There is no issue endpoint, so
   credentials cannot pile up by accident and a recipient can never exist without a way in. Tokens are
   still rows of their own keyed by recipient, which is what makes rotation safe: the superseded token
@@ -800,7 +805,8 @@ own Iceberg REST endpoint, which is a different connector's job. A table in any 
 view, which has no storage to point a recipient at, are refused as a bad request naming which it was —
 while the provider is still on the phone. Inside a shared schema they are passed over instead: sharing
 a schema is an offer of whatever is in it, and one unreadable table among a hundred should not take the
-other ninety-nine down with it.
+other ninety-nine down with it. One that becomes either after it was shared is withdrawn on the next
+read, as `SOURCE_NOT_SHAREABLE`.
 
 A `404` is read as the asset being gone, and both a `403` and a `401` as the caller no longer being
 allowed to read it: a `401` is their stored token expired or revoked, not this server failing to
@@ -819,7 +825,11 @@ provider it is shared by has none.
 
 Databricks' Unity Catalog answers the same endpoints and would mostly work, but its two extra
 credential shapes (`r2_temp_credentials`, `azure_aad`) are not read, so a table backed by either is
-refused rather than served with credentials this build guessed at.
+refused rather than served with credentials this build guessed at. Dir mode is therefore offered only
+for the storage whose grant this can read — `s3`, `abfss`, `gs` and their spellings — which keeps a
+table on Cloudflare R2 out of a share rather than letting it in and failing every vend. An Azure AAD
+token is the one that cannot be told apart in advance, since it arrives for the same `abfss` location a
+delegation SAS would; a catalog minting those fails at the vend.
 
 ### Another catalog
 

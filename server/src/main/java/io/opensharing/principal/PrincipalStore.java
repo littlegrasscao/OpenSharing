@@ -82,10 +82,13 @@ public class PrincipalStore {
    * that decides everything here anyway. The cost is that the encrypted form is recoverable by whoever
    * holds both the database and the key, which the hash alone would not have allowed — see {@link
    * SecretCipher} for why the key is meant to live somewhere a database dump does not reach.
+   *
+   * <p>Sealed to the principal's id, which they have from the moment they are constructed and cannot
+   * change afterwards, so a sealed credential moved to another row will not be read there.
    */
   private void storeToken(PrincipalEntity principal, String bearerToken) {
     principal.setTokenHash(Secrets.sha256(bearerToken));
-    principal.setCatalogCredential(cipher.encrypt(bearerToken));
+    principal.setCatalogCredential(cipher.encrypt(bearerToken, principal.getId()));
   }
 
   /** Registering under a chosen id must not take one that is already spoken for. */
@@ -152,7 +155,7 @@ public class PrincipalStore {
           "this table cannot be served at the moment, because the provider it is shared by has no "
               + "credential stored to read it with");
     }
-    return CatalogCaller.of(principal.getName(), cipher.decrypt(stored));
+    return CatalogCaller.of(principal.getName(), cipher.decrypt(stored, principal.getId()));
   }
 
   @Transactional(readOnly = true)

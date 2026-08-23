@@ -245,13 +245,36 @@ public final class UnityCatalogConnector implements CatalogConnector {
   }
 
   /**
-   * Directory access is offered for a table Unity Catalog will mint for, which is any table on a
-   * cloud. It is not offered for one on the filesystem the server runs on: Unity Catalog holds no
+   * Directory access is offered for a table Unity Catalog will mint a credential this server can read
+   * for, which is a table on one of the three clouds below.
+   *
+   * <p>It is not offered for a table on the filesystem the server runs on: Unity Catalog holds no
    * grant to hand out for a local path, and a mode a recipient cannot get credentials for is not one
-   * to advertise. Such a table is still served by url, which is the mode that suits it anyway.
+   * to advertise. Such a table is still served by url, the mode that suits it anyway.
+   *
+   * <p>Nor for storage this build would not understand the answer about. Unity Catalog mints in five
+   * shapes and this reads three of them, so a table on Cloudflare R2 would be accepted into a share,
+   * listed, and then fail on every vend — advertising a mode is a promise, and one that cannot be
+   * kept is worse than one never made. The remaining shape, an Azure AAD token, cannot be told apart
+   * by scheme from the delegation SAS that is read, so a catalog configured to mint those is a vend
+   * that still fails; nothing at resolve time distinguishes it.
    */
   private static Set<AccessMode> directoryAccess(UnityCatalogApi.TableInfo info) {
-    return StoragePaths.isLocal(info.storageLocation()) ? Set.of() : Set.of(AccessMode.DIR);
+    return VENDABLE_SCHEMES.contains(schemeOf(info.storageLocation()))
+        ? Set.of(AccessMode.DIR)
+        : Set.of();
+  }
+
+  /** The schemes whose minted credential {@link #credentials} knows how to read. */
+  private static final Set<String> VENDABLE_SCHEMES =
+      Set.of("s3", "s3a", "s3n", "abfs", "abfss", "wasb", "wasbs", "gs");
+
+  private static String schemeOf(String location) {
+    if (isBlank(location)) {
+      return "";
+    }
+    int end = location.indexOf(':');
+    return end < 0 ? "" : location.substring(0, end).toLowerCase(Locale.ROOT);
   }
 
   /**

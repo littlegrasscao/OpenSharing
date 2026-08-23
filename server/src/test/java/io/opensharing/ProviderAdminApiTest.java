@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -72,7 +73,12 @@ class ProviderAdminApiTest extends ServerTestBase {
 
     // What is sealed has to be the token itself, since it is presented to the catalog as her later.
     // Sealing the hash instead, or the previous token on a rotation, would satisfy everything above.
-    assertEquals(token, cipher().decrypt(sealed), "and what comes back out is what she registered");
+    String id = storedColumn("id", name);
+    assertEquals(
+        token, cipher().decrypt(sealed, id), "and what comes back out is what she registered");
+    // Sealed to her row, so it cannot be moved to another principal and read as theirs.
+    assertThrows(
+        Exception.class, () -> cipher().decrypt(sealed, UUID.randomUUID().toString()));
 
     // Replacing the token replaces both, which is what re-seals a principal after a key change.
     mvc.perform(
@@ -80,7 +86,7 @@ class ProviderAdminApiTest extends ServerTestBase {
                 .content("{\"bearer_token\":\"dapi-dana-rotated\"}"))
         .andExpect(status().isOk());
     assertNotEquals(sealed, storedCatalogCredential(name));
-    assertEquals("dapi-dana-rotated", cipher().decrypt(storedCatalogCredential(name)));
+    assertEquals("dapi-dana-rotated", cipher().decrypt(storedCatalogCredential(name), id));
   }
 
   /** Reads the stored form the way the server does, with the key the tests run under. */
