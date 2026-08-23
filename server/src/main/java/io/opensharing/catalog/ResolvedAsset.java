@@ -18,6 +18,10 @@ import java.util.Set;
  *     index on each column; an Iceberg catalog through the partition spec.
  * @param subtype the catalog's own refinement of the type, e.g. {@code VIEW} or
  *     {@code MATERIALIZED_VIEW} for a table
+ * @param accessModes the modes the catalog can support, which in practice means {@code DIR}: a
+ *     recipient reading a directory needs credentials scoped to the location, and whether any exist
+ *     is the catalog's answer to give. {@code URL} is added by the server instead, since serving one
+ *     depends on what this build can read rather than on anything the catalog holds.
  */
 public record ResolvedAsset(
     AssetType type,

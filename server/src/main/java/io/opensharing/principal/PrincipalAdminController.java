@@ -38,8 +38,7 @@ public class PrincipalAdminController {
   @ResponseStatus(HttpStatus.CREATED)
   public PrincipalResponse create(@Valid @RequestBody CreatePrincipalRequest request) {
     return PrincipalResponse.from(
-        principals.create(
-            request.id(), request.type(), request.name(), request.bearerToken()));
+        principals.create(request.id(), request.type(), request.name(), request.bearerToken()));
   }
 
   @GetMapping

@@ -30,18 +30,23 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "opensharing.catalog.type=local",
       "opensharing.catalog.local.file=classpath:test-catalog.yml",
       "opensharing.activation.external-base-url=https://sharing.example.com",
-      "opensharing.protocol-prefix=/open-sharing"
+      "opensharing.protocol-prefix=/open-sharing",
+      "opensharing.security.credential-encryption-key=" + ServerTestBase.CREDENTIAL_KEY
     })
 @AutoConfigureMockMvc
 abstract class ServerTestBase {
 
   static final String BOOTSTRAP_TOKEN = "test-bootstrap-token";
+
+  /** Base64 of 32 bytes, so a catalog credential can be stored in tests that want one. */
+  static final String CREDENTIAL_KEY = "c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=";
   static final String ADMIN_BASE = "/api/admin/v1";
   static final String PROTOCOL_BASE = "/open-sharing";
 
   /** The provider admin every test acts as, matching {@code sharableBy} in the test catalog. */
   static final String ALICE = "alice@example.com";
 
+  /** Alice's one secret: her login here and what the catalog is asked with as her. */
   static final String ALICE_TOKEN = "alice-secret";
 
   @Autowired protected MockMvc mvc;

@@ -65,6 +65,7 @@ public class SharedDataObjectService {
       resolution.requireEnumerable(resolved, caller);
     } else {
       requireStorageLocation(resolved);
+      resolution.requireServable(resolved);
     }
     resolution.applySnapshot(object, resolved);
     return objects.save(object);

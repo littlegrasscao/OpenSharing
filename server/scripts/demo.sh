@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # End-to-end walkthrough of the OpenSharing reference server against a running instance.
 #
-#   1. terminal A:  cd server && mvn spring-boot:run \
-#                     -Dspring-boot.run.arguments=--opensharing.admin.bootstrap-token=demo-bootstrap-token
+#   1. terminal A:  cd server && mvn spring-boot:run -Dspring-boot.run.arguments="\
+#                     --opensharing.admin.bootstrap-token=demo-bootstrap-token \
+#                     --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
 #   2. terminal B:  ./scripts/demo.sh
+#
+# The encryption key is what a principal's token is sealed under so the catalog can be asked as them
+# later. Started without the key, the server cannot register a principal at all, so the first step
+# below fails rather than the reads further down.
 #
 # Environment:
 #   SERVER            base URL of the server                (default http://localhost:8080)
@@ -17,7 +22,9 @@ PROTOCOL="$SERVER/open-sharing"
 
 ALICE="alice_$RANDOM@example.com"
 ALICE_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
-ALICE_TOKEN="alice-secret-$RANDOM"
+# Alice's one secret: it authenticates her to this server, and this server to the catalog as her when
+# a recipient reads what she shared. In a real deployment it is her catalog token.
+ALICE_TOKEN="dapi-alice-secret-$RANDOM"
 SHARE="demo_share_$RANDOM"
 RECIPIENT="demo_partner_$RANDOM"
 

@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,6 +75,10 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
             type: TABLE
             storageLocation: %s
             format: delta
+          - identifier: main.sales.stocked
+            type: TABLE
+            storageLocation: %s
+            format: delta
           - identifier: main.sales.forecast
             type: TABLE
             storageLocation: /tmp/forecast
@@ -88,7 +93,8 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
                 tableRoot("evolving"),
                 tableRoot("vectors"),
                 tableRoot("dormant"),
-                tableRoot("leftover")));
+                tableRoot("leftover"),
+                tableRoot("stocked")));
     registry.add("opensharing.catalog.local.file", () -> "file:" + catalog);
   }
 
@@ -166,6 +172,49 @@ class DeltaUrlAccessApiTest extends ServerTestBase {
     assertTrue(
         file.get("expirationTimestamp").asLong() > Instant.now().toEpochMilli(),
         "a url that has already expired is no use to a recipient");
+  }
+
+  /**
+   * The one table here whose data files are really on disk, so that a query can be followed all the
+   * way to the bytes. Every other fixture is a log over files that were never written, which is
+   * enough for the rest because nothing in this server opens a data file — but it leaves the last
+   * step of a read, that the url handed out resolves to the file the log described, untested.
+   *
+   * <p>The bytes are checked for length and for being parquet, and not parsed: what a column holds
+   * is parquet's business, while whether a recipient can reach it at the advertised size is this
+   * server's.
+   */
+  @Test
+  void handsOutUrlsThatResolveToTheFilesTheLogDescribed() throws Exception {
+    addTable(share, "sales.stocked", "main.sales.stocked");
+
+    List<JsonNode> lines =
+        ndjson(perform(post(protocolOf("stocked", "/query")).content("{}")).andReturn());
+
+    assertEquals(2, lines.get(1).get("metaData").get("numFiles").asLong());
+    assertEquals(808 + 797, lines.get(1).get("metaData").get("size").asLong());
+
+    List<JsonNode> files =
+        lines.stream().filter(line -> line.has("file")).map(line -> line.get("file")).toList();
+    assertEquals(2, files.size());
+    long rows = 0;
+    for (JsonNode file : files) {
+      byte[] bytes = Files.readAllBytes(Path.of(URI.create(file.get("url").asText())));
+
+      assertEquals(
+          file.get("size").asLong(),
+          bytes.length,
+          "a recipient sizes its read from the response before fetching");
+      assertEquals("PAR1", new String(bytes, 0, 4, StandardCharsets.US_ASCII));
+      assertEquals(
+          "PAR1",
+          new String(bytes, bytes.length - 4, 4, StandardCharsets.US_ASCII),
+          "a truncated file would still open with the magic");
+      rows +=
+          Long.parseLong(
+              file.get("stats").asText().replaceAll(".*\"numRecords\":(\\d+).*", "$1"));
+    }
+    assertEquals(5, rows, "the rows the two files actually hold");
   }
 
   @Test

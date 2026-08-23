@@ -37,7 +37,7 @@ public class DeltaTableService {
 
   public DeltaTable read(SharedDataObjectEntity object, DeltaVersion at, boolean includeFiles) {
     ResolvedAsset resolved = requireDelta(object);
-    StorageCredentials minted = credentials.mint(resolved, resolved.storageLocation());
+    StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     return new DeltaTable(
         resolved, minted, reader.read(resolved.storageLocation(), minted, at, includeFiles));
   }
@@ -69,7 +69,7 @@ public class DeltaTableService {
           "endingVersion and endingTimestamp are mutually exclusive");
     }
     ResolvedAsset resolved = requireDelta(object);
-    StorageCredentials minted = credentials.mint(resolved, resolved.storageLocation());
+    StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     String location = resolved.storageLocation();
 
     long start =
@@ -100,7 +100,7 @@ public class DeltaTableService {
       Long endingVersion,
       boolean includeHistory) {
     ResolvedAsset resolved = requireDelta(object);
-    StorageCredentials minted = credentials.mint(resolved, resolved.storageLocation());
+    StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     String location = resolved.storageLocation();
     long end =
         endingVersion != null
@@ -166,7 +166,7 @@ public class DeltaTableService {
    */
   public long version(SharedDataObjectEntity object, Instant startingTimestamp) {
     ResolvedAsset resolved = requireDelta(object);
-    StorageCredentials minted = credentials.mint(resolved, resolved.storageLocation());
+    StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     if (startingTimestamp != null) {
       return reader.earliestVersionAtOrAfter(
           resolved.storageLocation(), minted, startingTimestamp);

@@ -57,13 +57,18 @@ public class IcebergTableLoader {
     ResolvedAsset resolved = resolution.resolveForServing(table);
     requireIceberg(table, resolved);
     String metadataLocation = metadataLocationOf(table, resolved);
-    StorageCredentials minted = credentials.mint(resolved, resolved.storageLocation());
-    Map<String, String> properties = VendedCredentials.propertiesOf(minted);
+    StorageCredentials minted = credentials.mint(table, resolved, resolved.storageLocation());
+    // A table the catalog vends nothing for is on storage that needs nothing, so there is no grant
+    // to relay — the engine reads it the same way this server just did.
+    Map<String, String> properties =
+        minted == null ? Map.of() : VendedCredentials.propertiesOf(minted);
     return new IcebergLoadTable(
         metadataLocation,
         metadata(metadataLocation, minted),
         properties,
-        List.of(new IcebergLoadTable.Credential(minted.prefix(), properties)));
+        minted == null
+            ? List.of()
+            : List.of(new IcebergLoadTable.Credential(minted.prefix(), properties)));
   }
 
   /**

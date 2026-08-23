@@ -2,7 +2,8 @@
 #
 # Each entry is an asset the sharing server is allowed to resolve. Identifiers use the catalog's own
 # namespace; a provider admin references them when adding an object to a share. Add sharableBy to an
-# asset to restrict which principals may share it; leave it out and anyone may.
+# asset to restrict which principals may share it; leave it out and anyone may. The list is checked
+# again on every read, of the owner of the share it comes through, so taking a name off it revokes.
 #
 # A SCHEMA entry can be shared as a whole, which shares every table whose identifier is the schema's
 # plus one more level — including ones added to this file later.

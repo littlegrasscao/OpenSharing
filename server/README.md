@@ -4,11 +4,11 @@ A prototype implementation of the [OpenSharing protocol](../spec/protocols/) —
 manages shares and serves them to recipients, with the catalog and the database as replaceable
 components.
 
-**Scope: tables only, and one trivial catalog.** The protocol also defines volumes, agent skills and
-models; this prototype starts with tables, shared either one at a time or by the schema that holds
-them. The catalog is a trait (`CatalogConnector`) with a single implementation that reads everything
-from a local config file — no real catalog is contacted, so the sharing mechanics can be exercised on
-their own.
+**Scope: tables only.** The protocol also defines volumes, agent skills and models; this prototype
+starts with tables, shared either one at a time or by the schema that holds them. The catalog is a
+trait (`CatalogConnector`) with two implementations: open-source [Unity
+Catalog](https://www.unitycatalog.io/) over its REST API, and a declarative file that contacts nothing,
+so the sharing mechanics can be exercised on their own.
 
 The management side follows Databricks' `DataSharingService` (`data_sharing.proto`): principals own
 and author what they create, a share holds `SharedDataObject`s that carry the catalog's canonical name
@@ -44,12 +44,12 @@ PROVIDER ADMIN (a principal)            RECIPIENT
 +------------+---------------------------------+--------------+
              |                                 |
    Stores (JPA)                       CatalogConnector (SPI)
-   principals, shares + permissions,  resolveAsset(lookup, caller, intent)
-   recipients + tokens,               getStorageCredentials() -> [prefix..]
+   principals, shares + permissions,  resolveAsset(lookup, caller)
+   recipients + tokens,               getStorageCredentials(req, caller)
    shared data objects                listChildren() (shared schemas only)
                                               |
-             |                       LocalCatalogConnector
-   H2 / Postgres / MySQL             (declarative file)
+             |                       UnityCatalogConnector (REST)
+   H2 / Postgres / MySQL             LocalCatalogConnector (file)
                                                |
                                        cloud object storage
                                        (recipient reads directly)
@@ -69,7 +69,7 @@ recipient-facing protocol is the one exception, and has a package of its own.
 | `asset` | Everything about a shared asset that does not depend on its format: `SharedDataObjectEntity` and its status, `SharedDataObjectStore` and `SharedDataObjectService`, `SharedAliases` (the alias rules), `SharedTableService` (which tables a share holds, expanding a shared schema), `AssetResolutionService` (the server's use of the catalog trait, and so where the access modes an object offers are decided), `CredentialVendingService` and `TableMapper`. `asset.storage` holds reaching the storage a table lives in, whatever its format: the `UrlSigner` per scheme, the `StorageReader` that fetches a file the server itself has to look at, `StoragePaths` (whether a path is one of a shared table's own — asked by every format, so answered once), and `HadoopStorage`, which is how a read that goes through Hadoop gets the catalog's credentials and the path spelling a driver wants, `VendedGcsToken` included. Then one subpackage per format: `asset.delta` is url access mode — `DeltaLogReader` over Delta Kernel, `DeltaSharingCapabilities` (which response format a request settles on, and how much of the table's protocol the client is told) and a `DeltaLines` writer per format — and `asset.iceberg` is the Iceberg catalog's `loadTable`, plus the refusal that sends the Delta read operations there. |
 | `serving` | The recipient-facing protocol: `RecipientApi` (every route it serves), the share, schema and table discovery endpoints, credential vending, the four table read operations, the Iceberg REST catalog with the error shape its clients read, and the `TableOperations` seam those read operations dispatch across. |
 | `recipient` | `RecipientEntity`, `RecipientTokenEntity` and `AuthType`, `RecipientStore`, the provider-admin recipient and rotation endpoints, token minting, rotation and one-time activation, `IpAccessList`, and the filter and principal that authenticate a recipient request. |
-| `catalog` | The `CatalogConnector` trait a new catalog implements and the types it exchanges, including `CatalogCaller`. Each implementation gets a subpackage: `catalog.local` is the file-backed one. |
+| `catalog` | The `CatalogConnector` trait a new catalog implements and the types it exchanges, including `CatalogCaller`. Each implementation gets a subpackage: `catalog.local` is the file-backed one, `catalog.unity` is Unity Catalog — a client that speaks its REST API and a connector that says what the answers mean. |
 | `protocol` | Every wire shape the spec defines, inbound and outbound, and nothing else: `Share`, `Schema`, `Table`, `TemporaryCredentials` and its request body, the profile file, the read-response actions in both formats — `TableAction` is the one line of a response, and each of its slots takes either the parquet shape or the delta one — and the Iceberg REST shapes, whose spelling is Iceberg's rather than this protocol's. No behaviour, no dependencies. |
 | `auth` | Admin authentication, bearer-token extraction and the token hashing every side shares. |
 | `config` | Properties and bean wiring: which catalog, which filters, which argument resolvers, and how the two APIs are published as OpenAPI. |
@@ -118,10 +118,17 @@ inside it. Those two cascades are the only cross-package writes.
 - **Creating administrators is separated from being one.** The bootstrap token may only register
   principals, and only it may: neither credential can do the other's job, so a stolen admin token
   cannot mint itself accomplices, and a stolen bootstrap token cannot read or change any data.
-- **Only a hash of a principal's token is stored**, which has a consequence worth stating: the server
-  can query the catalog as the caller while their request is in flight, and never afterwards. So adding
-  an object resolves as the admin — the catalog decides whether they may share it — while serving a
-  recipient later resolves as the server itself.
+- **The catalog is asked as a provider, never as a recipient.** Adding an object is asked as the admin
+  making the request, whose token is in hand while it is in flight. Serving — both re-resolving the
+  table and minting the credentials that open it — is asked as the owner of
+  the share being read through, because a recipient is nobody the catalog knows and the owner is whose
+  access they read by — so an owner who loses access takes their recipients' with them, which is what
+  Databricks does too. That means holding something the catalog accepts as the owner, which is why a
+  principal's `bearer_token` is their catalog credential and their login here both: it is stored hashed
+  to recognize them and sealed to replay, one secret in two forms rather than two secrets that would
+  have to match. Nothing stored can be asked with means the read stops rather than falling back to the
+  server's own catalog identity, which would answer on an access no provider was granted and outlive
+  the access it was meant to follow.
 - **A recipient sees an alias, not a catalog name.** An object stores the canonical `main.sales.orders`
   and the two-level `shared_as` alias, defaulting to the last two levels of the source name. Splitting
   that alias is what gives the protocol its schema level, so the two halves are stored normalized for
@@ -146,9 +153,14 @@ inside it. Those two cascades are the only cross-package writes.
 - **Timestamps that mean "when the row appeared" are not duplicated.** `added_at` and `granted_at` are
   the row's `created_at`; a token's `superseded_at` and `revoked_at` are real columns, because they say
   something `created_at` cannot.
-- **The database never holds a usable secret.** Issuing a recipient token only creates an
-  activation link. The bearer token is minted when the recipient opens that link, returned once
-  inside `config.share`, and stored only as a SHA-256 hash.
+- **Every credential the server authenticates is stored as a hash.** Issuing a recipient token only
+  creates an activation link. The bearer token is minted when the recipient opens that link, returned
+  once inside `config.share`, and stored only as a SHA-256 hash. The single exception is a principal's
+  token, which the server must present to the catalog rather than merely recognize, so a second copy is
+  sealed under `security.credential-encryption-key`: a stolen database alone still yields nothing
+  usable, while a stolen database and key together yield every provider's catalog credential. That is
+  the price of asking the catalog as the provider at all, and it is why no principal can be registered
+  without a key set.
 - **A token comes with the recipient, and only rotation replaces it.** There is no issue endpoint, so
   credentials cannot pile up by accident and a recipient can never exist without a way in. Tokens are
   still rows of their own keyed by recipient, which is what makes rotation safe: the superseded token
@@ -160,11 +172,13 @@ inside it. Those two cascades are the only cross-package writes.
 - **An ungranted share is reported as missing, not forbidden**, so recipients cannot probe for the
   names of other tenants' shares. An IP access list is the opposite: it says `PERMISSION_DENIED`,
   because the recipient holds a valid token and the network is the thing being refused.
-- **A Delta table can be read either way, and the server only offers what it can serve.** In `dir`
+- **A Delta table can be read either way, and only what can actually be served is offered.** In `dir`
   access mode the recipient gets credentials and replays the log itself. In `url` mode the server
-  replays the log and hands back one signed url per file, so a recipient holds no credential at all. A
-  table is only advertised as `url` when this build can actually serve it, since the protocol lets a
-  client pick a mode from that list and being sent down a dead end is worse than not being offered it.
+  replays the log and hands back one signed url per file, so a recipient holds no credential at all.
+  The protocol lets a client pick a mode from the list a table carries, so being sent down a dead end
+  is worse than not being offered the mode: `url` is advertised only where this build can serve it, and
+  `dir` only where the catalog says it will vend for the location, which it will not for a table on the
+  server's own filesystem.
 - **The server never opens a data file.** Reading the log is the only time it touches storage, and it
   does so with the same credentials it would hand a recipient — never with a standing secret of its
   own, which it does not have.
@@ -176,8 +190,9 @@ Requirements: Java 21 and Maven.
 ```bash
 cd server
 mvn install
-mvn spring-boot:run \
-  -Dspring-boot.run.arguments=--opensharing.admin.bootstrap-token=demo-bootstrap-token
+mvn spring-boot:run -Dspring-boot.run.arguments="\
+  --opensharing.admin.bootstrap-token=demo-bootstrap-token \
+  --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
 ```
 
 The server listens on `http://localhost:8080` with an H2 file database under `server/data/` and the
@@ -185,6 +200,11 @@ sample catalog in `src/main/resources/local-catalog.yml`. Configure
 `opensharing.admin.bootstrap-token`; with none set a random one is generated and logged at startup, so
 it changes on every restart. That token registers principals and does nothing else, and it is the only
 credential that may — every other admin call authenticates as a principal.
+
+`security.credential-encryption-key` is what a principal's token is sealed under so the catalog can be
+asked as them while serving a recipient. It is required to register anyone, so a server started without
+it cannot be set up at all. The key above is a throwaway for local use; a real deployment keeps one
+somewhere a database dump does not reach.
 
 Then walk through the whole provider-to-recipient flow (requires `jq`):
 
@@ -373,10 +393,21 @@ else records who did it:
 curl -X POST "$ADMIN/principals" \
   -H "Authorization: Bearer $BOOTSTRAP_TOKEN" -H 'Content-Type: application/json' \
   -d '{"type":"USER","id":"941a703c-ff3c-4d6f-8fb8-0e5aca154ed4",
-       "name":"alice@example.com","bearer_token":"caller-generated-secret"}'
+       "name":"alice@example.com","bearer_token":"dapi-alices-catalog-token"}'
 ```
 
-The plaintext is never stored, returned or logged. `id` may be given so a principal keeps the id an
+`bearer_token` is the principal's catalog credential, and this server accepts it as their login too.
+One secret, because the server has to ask the catalog as whoever shared an asset, and a second secret
+would only ever have to be kept identical to this one to behave; whoever holds it can already act as
+them against the catalog that decides everything here anyway. It is never stored in the clear,
+returned or logged — not even on the response to the call that supplied it — but it is stored twice:
+hashed, to recognize it when they present it, and sealed under
+`security.credential-encryption-key`, to present it to the catalog on a recipient's behalf long after
+their own request ended. `PATCH`ing a new token replaces both, which is also how a principal is brought
+back after the key changes. A token of up to 2048 characters is accepted, which holds the JWT a catalog
+is apt to issue; a longer one is refused in those terms rather than left to fail as a storage conflict.
+
+`id` may be given so a principal keeps the id an
 external directory already uses; it must be a UUID and one that is free, and leaving it out has the
 server generate one. This is the only object whose id a caller chooses — a share's and a recipient's
 are the server's to assign, as the spec has them.
@@ -395,12 +426,22 @@ curl -X PATCH "$ADMIN/shares/sales_share" \
 ```
 
 The server resolves the source in the catalog **as the calling principal**, so the catalog decides
-whether they may share it, and records the source's asset id, subtype and format. `type` defaults to
+whether they may share it, and records the source's asset id, subtype and format. Two permissions are
+at work and only one of them is the catalog's: the caller must own the share, which this server checks
+itself, and must be allowed to share the asset, which only the catalog can answer. That second
+question is not about owning the asset — Databricks, whose model this follows, asks for `SELECT`
+on the table or view together with `USE CATALOG` and `USE SCHEMA` on the parents holding it, so a
+connector that demanded ownership would refuse a provider Databricks allows. `type` defaults to
 `TABLE`; `SCHEMA` is the other accepted value and anything else is refused for now. `shared_as`
 defaults to the last two levels of the source name, so `main.sales.orders` is served as schema `sales`,
 table `orders`. `REMOVE` takes the same `data_object`, matched on either the source name or the alias.
 Updates apply in order and the whole `PATCH` is one transaction, so a rejected object leaves the share
 untouched.
+
+A table is also refused if no access mode could serve it: neither mode is this server's to promise
+alone — `dir` needs the catalog to vend for the location and `url` needs a Delta log this build may
+replay — and a table with neither would be accepted, listed, and unreadable by any route a recipient
+could take. Better said while the provider is still on the phone.
 
 **Adding a schema** shares every table in it, including the ones added to it after this call:
 
@@ -499,6 +540,7 @@ line or as the upper-case underscored form of the same path in the environment, 
 | `protocol-prefix` | `/open-sharing` | Prefix for protocol endpoints; also what goes in the profile file. |
 | `admin.base-path` | `/api/admin/v1` | Prefix for the provider-admin API. |
 | `admin.bootstrap-token` | generated | The only credential that may `POST /principals`, and its only privilege. Set it; a generated one changes each restart. |
+| `security.credential-encryption-key` | blank | Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the catalog can be asked as them later. Required: blank means no principal can be registered. Keep it out of the database's reach: an environment variable, a mounted secret, a KMS. |
 | `activation.base-path` | `/activation` | Prefix the single-use activation endpoint is served under. |
 | `activation.external-base-url` | `http://localhost:8080` | Public base URL used to build activation URLs and the profile endpoint. |
 | `activation.ttl` | `72h` | How long an unused activation link stays valid. |
@@ -509,8 +551,11 @@ line or as the upper-case underscored form of the same path in the environment, 
 | `delta.url-access-enabled` | `true` | Read Delta logs and serve `version`, `metadata` and `query`. Off leaves `dir` mode alone and stops `url` being advertised. |
 | `delta.url-ttl` | `1h` | Lifetime of a signed file url, capped by the credentials it was signed with. |
 | `storage.s3-region` | `us-east-1` | Region used to read and to sign S3 urls when the catalog's credentials do not name one. |
-| `catalog.type` | `local` | Only `local` is shipped. |
+| `storage.gcs-service-account-key-file` | blank | Service account key whose private key signs urls for `gs` paths. Blank falls back to `GOOGLE_APPLICATION_CREDENTIALS`; with neither, Google storage is offered in `dir` mode only. |
+| `catalog.type` | `local` | Which connector to run: `local` or `unity`. |
 | `catalog.local.file` | `classpath:local-catalog.yml` | Spring resource location of the catalog file. |
+| `catalog.unity.uri` | blank | Base url of the Unity Catalog API, including the path it is served under, e.g. `http://localhost:8081/api/2.1/unity-catalog`. Required when the type is `unity`. |
+| `catalog.unity.connect-timeout` / `request-timeout` | `5s` / `30s` | How long to wait for the catalog to accept a connection, and for it to answer. |
 
 ### Reaching storage
 
@@ -547,6 +592,41 @@ Two dependency choices are worth knowing, since both are visible in the jar's si
 and Google's connector is taken as the shaded build it publishes for this, keeping gRPC, Guava and
 Gson out of the server.
 
+### Signing a url
+
+Handing out a url is the other half of reaching storage, and each cloud gives a different answer to
+the same question — what makes a url stand on its own. AWS takes the session triple into a SigV4
+query signature, so the url carries the credential; Azure appends the user delegation SAS, which *is*
+the credential. Both are therefore signed from what the catalog minted for that one table, and neither
+can outlive or outreach it.
+
+Google is the exception, and it is a structural one. A V4 signature there is RSA over the request, so
+only a private key produces one, and an OAuth access token — all a catalog has to vend — cannot be put
+in a url at all. The reference sharing server resolves this by holding a service account key and
+signing with it, pointed at the file by `GOOGLE_APPLICATION_CREDENTIALS`; this server does the same,
+through `storage.gcs-service-account-key-file` or that same variable. What follows is worth being
+explicit about: such a url reaches whatever that service account may read, rather than only what the
+catalog was willing to vend for, so the key should be one whose access is no wider than what is
+shared. It signs and never reads, so no table is *read* with it either way. A deployment that would
+rather hold no key leaves it unset, and then `gs` has no signer, `url` mode is not advertised for a
+table on Google storage, and `dir` mode serves it with the vended token as before.
+
+That last part is the general rule: `url` mode is offered only for a scheme this build can sign, so a
+table never advertises a mode that would replay its log and then refuse every file it found.
+
+The signing is written out here rather than taken from each cloud's SDK — the same trade as the
+excluded AWS bundle, and for Google the difference between one `Signature` call and pulling in the
+library the shaded connector exists to keep out. Signatures are unit-tested by verifying them against
+the public half of a generated key, over a string to sign the test builds from each cloud's published
+algorithm rather than from the signer's own code.
+
+The Google signature has also been put to Google, which is the only check that rules out a correct
+implementation of a misread specification: a url signed with a real service account key was accepted
+for a real object, one altered hex digit in it came back `SignatureDoesNotMatch`, and the same
+signature over an object that does not exist came back `NoSuchKey` — so the signature was verified on
+its way in, rather than the object merely being readable anyway. That took credentials and a bucket,
+so it is not part of the suite.
+
 ### The catalog trait
 
 `CatalogConnector` is the whole seam between the server and a system of record for assets. Two methods
@@ -557,8 +637,8 @@ server asks nothing else of a connector that shares assets one at a time:
 public interface CatalogConnector {
   String name();
 
-  ResolvedAsset resolveAsset(AssetLookup lookup, CatalogCaller caller, AssetAction intent);
-  List<StorageCredentials> getStorageCredentials(CredentialRequest request);
+  ResolvedAsset resolveAsset(AssetLookup lookup, CatalogCaller caller);
+  List<StorageCredentials> getStorageCredentials(CredentialRequest request, CatalogCaller caller);
 
   // Optional. Required only to share a whole schema.
   default List<ResolvedAsset> listChildren(AssetLookup parent, CatalogCaller caller) { ... }
@@ -569,26 +649,36 @@ public interface CatalogConnector {
 for formats that need one — the `metadataLocation` a client uses to interpret the bytes, plus the
 `schema` if the catalog states one. It is called when an admin adds the object (so a share can never
 point at something that does not exist) and again before every vend (so a relocated asset is never
-served from a stale snapshot). `caller` carries the name and bearer token of the principal on whose
-behalf the question is asked, or `CatalogCaller.server()` when the server asks on its own to serve a
-recipient, and `intent` says whether the asset is about to be shared or read, since permission to do
-one is not permission to do the other. A connector that denies the caller throws
-`AssetAccessDeniedException`, which the admin API reports as `PERMISSION_DENIED` and serving records on
-the object's status.
+served from a stale snapshot). `caller` carries the name and credential of the provider-side principal
+the question is asked for: the admin making the request when an object is added, and the owner of the
+share being read through when a recipient reads. Either way what to ask of them is whether they may
+share the asset, not whether they own it — `SELECT` on the table or view, with `USE` above it, in
+Databricks terms. Serving asks it of the owner on purpose: a recipient reads by virtue of that
+provider's access, so an owner who loses it should take their recipients' along, and asking every time
+is what makes that happen. Both halves are always there, so an implementation never has to decide what
+to do without a credential: a principal who has none stops the read before a connector is reached,
+rather than having it answered by a service identity whose access outlives theirs. A connector that
+denies the caller throws `AssetAccessDeniedException`, which the admin API reports as
+`PERMISSION_DENIED` and serving records on the object's status.
 
 Resolution is also the existence check. There is no separate `exists`, because every caller that wants
 to know whether an asset exists needs the metadata that proves it, so the cheaper call could never be
-used. Nor is there a separate `authorize`: the caller and the intent are already arguments here, and an
-exception says more than a boolean would.
+used. Nor is there a separate `authorize`: the caller is already an argument here, and an exception
+says more than a boolean would. Nor is there an intent argument saying whether the asset is about to be
+shared or read, which this once carried: both are the provider-side question of who may share, and a
+second argument that could only ever agree with the first is one more thing to read the wrong way.
 
 `getStorageCredentials` returns a prefix, a cloud provider, an opaque credential map and an expiry —
 never a long-lived secret the server would have to keep. It returns a list because Iceberg's
 `LoadCredentialsResponse` does: an asset may span prefixes, and `AssetResolutionService` picks the
 narrowest entry covering the location being read, which is what the Iceberg spec asks of clients and
-keeps a bucket-wide grant from shadowing a table-specific one. Its argument is a `CredentialRequest`
-rather than a location, because a catalog may vend by asset id instead of by path — Unity Catalog's
-`POST /temporary-table-credentials` takes a `table_id` — and because the asset type selects the
-endpoint on catalogs that vend volumes separately from tables.
+keeps a bucket-wide grant from shadowing a table-specific one. It takes a `CredentialRequest` rather
+than a location, because a catalog may vend by asset id instead of by path — Unity Catalog's `POST
+/temporary-table-credentials` takes a `table_id` — and because the asset type selects the endpoint on
+catalogs that vend volumes separately from tables. It takes a caller for the same reason `resolveAsset`
+does, and it is the more important of the two: this is the moment access to the bytes is handed out, so
+it is the moment a catalog most wants to decide, and a grant minted on any other identity would be one
+that losing the owner's access does not take away.
 
 `listChildren` is the one optional method, and exists for exactly one caller: a shared schema, whose
 tables have to come from somewhere and are not stored here. It defaults to refusing, so a catalog that
@@ -631,19 +721,112 @@ Identifiers are matched case-insensitively and `type` defaults to `TABLE`. A `SC
 location of its own and holds whatever names it: `main.hr` contains `main.hr.employees`, which is all
 the hierarchy a flat file needs for a schema to be shared as a whole. `sharableBy` is how the file
 stands in for a real catalog's permission model: a principal outside the list is refused when adding
-the object, which is the check `resolveAsset` exists to make. It bears on sharing alone, so an object
-already in a share keeps serving — those resolutions arrive as the server, with `READ` intent. Unknown
-keys, an unsupported
-`format` and an unsupported `accessModes` entry all fail the file at startup, so a typo cannot silently
-drop a table or leave one that only breaks when a recipient reaches it. `mode: FAKE` logs a warning at
-startup, because the credentials it hands out open nothing.
+the object, which is the check `resolveAsset` exists to make. What it stands in for is being allowed
+to share the asset — `SELECT` on the table or view, and `USE` on the catalog and schema above it —
+rather than owning it, which is not asked for here or by Databricks. Serving asks it too, of the
+owner of the share being read through, so removing a principal from the list stops what they already
+shared as well as what they might share next. The credential that arrives with the name is ignored:
+this file authenticates nobody, it only recognizes names. Unknown keys, an unsupported `format`
+and an unsupported `accessModes` entry all
+fail the file at startup, so a typo cannot silently drop a table or leave one that only breaks when a
+recipient reaches it. `mode: FAKE` logs a warning at startup, because the credentials it hands out
+open nothing.
 
-### A real catalog
+### Unity Catalog
 
-Add a subpackage under `catalog` — `catalog.unity` next to `catalog.local` — implement
-`CatalogConnector` there and contribute it as a `@Bean`. `CatalogConfiguration` declares its default
-`@ConditionalOnMissingBean`, so yours takes over with no other change to the server, and that class
-is the only one outside `catalog` that ever names an implementation.
+`UnityCatalogConnector` implements the same trait against an open-source Unity Catalog, over its REST
+API. Point it at one:
+
+```yaml
+opensharing:
+  catalog:
+    type: unity
+    unity:
+      uri: http://localhost:8081/api/2.1/unity-catalog
+```
+
+No credential sits beside that url, and that is the point: every request is made as the principal it
+concerns, presenting the token stored for them, so what this server can see in the catalog is never
+more than what the provider asking could see themselves. Adding a table is asked as the admin adding
+it; a recipient's read is asked as the owner of the share, whose token is unsealed for the call. Turn
+Unity Catalog's own authorization on and it decides both.
+
+Three calls carry the integration:
+
+| What the server needs | Unity Catalog call |
+|---|---|
+| Where a table lives, and in what format | `GET /tables/{catalog.schema.table}` |
+| That a schema exists, and what is in it right now | `GET /schemas/{catalog.schema}`, then `GET /tables?catalog_name=&schema_name=` a page at a time |
+| Credentials for that storage | `POST /temporary-table-credentials` with the table's id and `READ` |
+
+With Unity Catalog's authorization turned on, the principal a call is made as needs `USE CATALOG` on
+the catalog, `USE SCHEMA` on the schema and `SELECT` on the table — the same three Databricks asks for.
+The vend is authorized separately from the lookup and wants all three, so a principal holding only
+`SELECT` is told where a table lives and then refused the credentials to read it; even a metastore
+admin is refused until the grants exist. A provider hits this while adding the table, which is the
+intended moment, and a share owner who loses one of the three afterwards stops their recipients with
+them.
+
+`table_id` is what the vend takes rather than a path, so it is kept as the object's `source_asset_id`
+and refreshed on every resolution. `storage_location` becomes what credentials are scoped to,
+`table_type` is recorded as `source_subtype`, and the `partition_index` on each column becomes the
+ordered partition columns. The columns themselves are not translated: nothing here reads a
+catalog-stated schema, since a Delta table's own log is the authority on its shape. `dir` mode is
+offered for a table Unity Catalog will mint for, which is any table on a cloud, and withheld from one
+on this machine's own filesystem, where it holds no grant to hand out — a recipient picks a mode from
+what a table offers, so offering one nothing can be minted for would be an invitation to a dead end.
+`url` mode is not the catalog's to offer either way: it depends on the format and on what this build
+can serve.
+
+An external table on the filesystem the server runs on is vended for like any other, and Unity Catalog
+answers it with every credential block empty — its own reader takes that answer and opens the file. So
+does this server: an empty vend from a `file:` or bare path means nothing is needed, the log is replayed
+on the deployment's own filesystem access, and the recipient is handed urls to the parquet. The same
+empty answer about a bucket stays a failure, since there it means a catalog that was never told about
+the storage, and calling that "nothing needed" would turn a misconfiguration into a read that dies
+further down. Such a table is offered in `url` mode only, so a recipient is never invited to ask for
+credentials that do not exist; one that asks anyway, without reading what the table offers, is told
+which mode does work.
+
+Url mode carries a local table because the server replays its log through the same filesystem — but
+that is the whole of what a credential-free table gets, and a Parquet one has no log to replay. A
+local Parquet table therefore has no route to a recipient at all: nothing to vend for `dir`, nothing
+to sign for `url`. Adding one is refused outright, naming both halves of the reason, and inside a
+shared schema it is passed over like any other table this server could not serve.
+
+`data_source_format` decides the format, and Unity Catalog's list of them has no Iceberg member, so a
+table shared this way is Delta or Parquet; Iceberg tables in a Unity Catalog are reached through its
+own Iceberg REST endpoint, which is a different connector's job. A table in any other format, and a
+view, which has no storage to point a recipient at, are refused as a bad request naming which it was —
+while the provider is still on the phone. Inside a shared schema they are passed over instead: sharing
+a schema is an offer of whatever is in it, and one unreadable table among a hundred should not take the
+other ninety-nine down with it.
+
+A `404` is read as the asset being gone, and both a `403` and a `401` as the caller no longer being
+allowed to read it: a `401` is their stored token expired or revoked, not this server failing to
+authenticate, since it holds no credential of its own and asks only as them. Both therefore withdraw
+the object rather than leave it listed and failing on every read, and the log says which it was and
+that the principal needs a new bearer token. Anything else is a bad gateway saying only which status
+came back — which request it was, and the catalog's own message, go to the log, because the same code
+serves a recipient, who knows the table by the alias it is shared under and has no business learning
+its internal name or reading text written upstream of here. Where one of these lands on a recipient's
+read, whether the catalog was refusing to resolve the table or to mint for it, the object is marked
+unservable and the recipient is told only that the server may no longer read it: the owner it was asked
+as is named in the log, not on the wire. The same
+line divides the one failure that is the server's own — an owner with no stored credential to ask as —
+where the log names the principal and says how to fix it, and the recipient hears only that the
+provider it is shared by has none.
+
+Databricks' Unity Catalog answers the same endpoints and would mostly work, but its two extra
+credential shapes (`r2_temp_credentials`, `azure_aad`) are not read, so a table backed by either is
+refused rather than served with credentials this build guessed at.
+
+### Another catalog
+
+Add a subpackage under `catalog` — as `catalog.unity` and `catalog.local` are — implement
+`CatalogConnector` there and either add a branch to `CatalogConfiguration` or contribute your own
+`@Bean`. That default is `@ConditionalOnMissingBean`, so yours takes over with no other change to the
+server, and that class is the only one outside `catalog` that ever names an implementation.
 
 ### Databases
 
@@ -689,11 +872,33 @@ activation link, a request from outside the IP access list, ungranted shares, an
 tables. Unit tests cover the name rules, the token predicates, the catalog file and the status
 transitions a broken source causes.
 
+The Unity Catalog connector is tested against a stub Unity Catalog: a real HTTP server on a loopback
+port answering canned JSON, so the request built, the header carrying the caller's token, and the
+reading of the answer are all exercised the way a catalog would exercise them. Between them the cases
+cover a table mapped to where it lives, a schema listed across two pages, each cloud's credential shape,
+the four statuses that mean something particular, and every refusal: a name that could not be a Unity
+Catalog name, a format and a view that cannot be served, and a vend with no table id to ask about.
+
+It has also been driven against a real open-source Unity Catalog (`io.unitycatalog:unitycatalog-server`,
+run from its published jars) with authorization enabled, which is worth repeating when the connector
+changes: two providers holding tokens for different Unity Catalog principals, one privileged and one
+not, sharing and failing to share the same table; a schema listed live with a CSV table in it passed
+over; and the four statuses arriving from a server that meant them. What that cannot cover is a
+successful vend, which needs a catalog configured against real cloud storage — asked for a table on a
+local filesystem, Unity Catalog answers `200` with every credential block null, which is the reply the
+connector reports as the catalog holding no storage configuration for that location.
+
 The Delta read operations are exercised against hand-written logs under
-`src/test/resources/delta-table`, which is enough because nothing here opens a data file: a table with
-three commits and a change data feed, one whose schema and then protocol change under a reader, one
-using deletion vectors, one that only names the feature while leaving it off, one whose vector outlived
-the setting that made it, and one whose log points at a file it does not own. Between them they cover
+`src/test/resources/delta-table`, which is mostly enough because nothing here opens a data file: a
+table with three commits and a change data feed, one whose schema and then protocol change under a
+reader, one using deletion vectors, one that only names the feature while leaving it off, one whose
+vector outlived the setting that made it, and one whose log points at a file it does not own.
+
+One of them, `stocked`, does have its parquet files on disk, and is the only reason to keep a binary
+in the test resources: it lets a query be followed past the response to the bytes, checking that the
+url handed out opens the file the log described at the size the response advertised. Nothing parses
+the parquet — what a column holds is parquet's business — but the fixture also quietly guards against
+a build that mangles a binary resource on its way into `target`. Between them they cover
 both response formats and the negotiation that picks one, a snapshot and a `startingVersion` window,
 the schema and protocol changes a stream is told about, a deletion vector signed beside its data file,
 and the four refusals that matter — a client that cannot read what the table uses, parquet for a table
@@ -721,10 +926,24 @@ type once.
 
 ## Not implemented yet
 
+- Rotating `security.credential-encryption-key` in place. Nothing re-seals what is already stored, so a
+  key change means `PATCH`ing every principal a new `bearer_token`; until then their recipients' reads
+  fail with an internal error rather than falling back, because silently serving with the wrong identity
+  would be worse than stopping. Which key state caused it is logged, not sent — a recipient hears only
+  that the table cannot be served. Adding to a share still works in the meantime, since that goes out
+  with the token the request arrived with.
+- A catalog credential per catalog. One connector runs at a time, so a principal has one credential
+  and nothing keys it to the catalog it is for.
+- Obtaining a credential rather than being handed one. A provider pastes a long-lived secret in;
+  neither OAuth token exchange nor an on-behalf-of grant is implemented, so nothing shortens its life
+  or lets the server borrow the owner's identity without holding a secret of theirs.
 - Volumes, agent skills and models. The protocol defines them and `AssetType` names them; only tables
   can be shared, whether directly or through the schema holding them.
-- Any real catalog. `CatalogConnector` is the seam a Unity Catalog, Polaris or Iceberg REST
-  implementation drops into; only the file-backed one exists today.
+- Any catalog but Unity Catalog and the file. `CatalogConnector` is the seam a Polaris or Iceberg REST
+  implementation drops into, and neither exists yet — which also means an Iceberg table cannot be
+  resolved through Unity Catalog, whose table formats do not include it.
+- Unity Catalog's volume and model credential endpoints, and its staging and commit APIs for managed
+  tables. Only what sharing a table needs is called.
 - `auth_type: OIDC` on a recipient. It is accepted and stored, but only `TOKEN` is authenticated.
 - Group membership. `PrincipalType.GROUP` exists so a share can be owned by a team, and nothing
   resolves a user to the groups it belongs to yet.
@@ -747,9 +966,9 @@ type once.
   mints tokens from an account key rather than accepting a token, so such a table is read with the
   deployment's own Hadoop configuration or not at all; `abfss` takes the SAS the catalog vends, and
   `dir` access mode works either way. What the other clouds take is under Reaching storage above.
-- Signing a url for a file on Google Cloud Storage. A presigned GCS url is made with a service
-  account's own key, and a vended OAuth token cannot sign one, so the log of such a table is read but
-  its files cannot be handed out; `dir` access mode is the way to read it.
+- Signing a url for Google storage from the credentials the catalog vended, as AWS and Azure are. A V4
+  signature is RSA, so it takes a service account key of the server's own — see Signing a url above
+  for what that key can reach, and for what is served when there is none.
 - Filtering by `predicateHints`, `jsonPredicateHints` or `limitHint`, and paginating a query. All are
   best-effort in the protocol, so every file of the version asked for is returned.
 - Sharing part of a table: a share covers a table whole, with no partition filter, row filter or
@@ -761,12 +980,13 @@ type once.
   `snapshots=refs` is ignored — the metadata document is relayed whole, so a client gets every
   snapshot the table has. Multi-level namespaces do not exist here: a share's namespaces are its
   schemas.
-- `loadTable` on a table whose storage this build cannot sign a url for, which today means GCS. The
-  metadata document is read through a signed url, so the signer that url access mode needs is the same
-  one this needs; `dir` access mode serves such a table regardless.
-- Outbound connection config for a real catalog: an endpoint and an auth mode (OAUTH, BEARER, SIGV4)
-  per connector. `CatalogCaller` carries the calling principal's token, but nothing models how to reach
-  and authenticate to the catalog itself.
+- `loadTable` on a table whose storage this build cannot sign a url for, which now means one whose
+  scheme has no signer — Google storage with no service account key configured, or a driver a
+  deployment slimmed out. The metadata document is read through a signed url, so the signer url access
+  mode needs is the same one this needs; `dir` access mode serves such a table regardless.
+- Any outbound auth mode but bearer. A connector reaches its catalog over a url and presents the
+  caller's token as `Authorization: Bearer`; nothing models OAuth token exchange, SigV4 or mutual TLS,
+  and there is no proxy, retry or circuit-breaker configuration around the call.
 - Provider-side catalog browsing. `listChildren` exists on the SPI for expanding a shared schema, but
   no admin endpoint exposes it, so a provider cannot list a catalog before deciding what to share.
 - `Agent` and `Page` asset types, which are still community proposals.

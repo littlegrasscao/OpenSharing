@@ -2,8 +2,10 @@ package io.opensharing;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -13,10 +15,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.opensharing.auth.SecretCipher;
+import io.opensharing.config.OpenSharingProperties;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
@@ -24,6 +31,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * recipient token lifecycle.
  */
 class ProviderAdminApiTest extends ServerTestBase {
+
+  @Autowired private JdbcTemplate jdbc;
 
   @Test
   void requiresAPrincipalsToken() throws Exception {
@@ -33,6 +42,86 @@ class ProviderAdminApiTest extends ServerTestBase {
 
     mvc.perform(get(ADMIN_BASE + "/shares").header("Authorization", "Bearer wrong-token"))
         .andExpect(status().isUnauthorized());
+  }
+
+  /**
+   * The one secret a principal has, in the two forms the server keeps it in: a hash to recognize them
+   * by, and a sealed copy to ask the catalog with. Neither is readable in the database or the API.
+   */
+  @Test
+  void keepsAPrincipalsTokenHashedToRecognizeAndSealedToReplay() throws Exception {
+    String name = unique("dana") + "@example.com";
+    String token = "dapi-dana-secret";
+    JsonNode created =
+        readJson(
+            mvc.perform(
+                    bootstrap(post(ADMIN_BASE + "/principals"))
+                        .content(
+                            "{\"name\":\"" + name + "\",\"bearer_token\":\"" + token + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn());
+
+    assertTrue(created.path("bearer_token").isMissingNode(), "never echoed back");
+    assertTrue(
+        adminGet("/principals/" + name).path("bearer_token").isMissingNode(), "nor handed out later");
+
+    String sealed = storedCatalogCredential(name);
+    assertTrue(sealed.startsWith("v1."), "the stored form says what it is: " + sealed);
+    assertFalse(sealed.contains(token), "the secret itself is not in the database");
+    assertFalse(storedTokenHash(name).contains(token), "nor in the column used to recognize it");
+
+    // What is sealed has to be the token itself, since it is presented to the catalog as her later.
+    // Sealing the hash instead, or the previous token on a rotation, would satisfy everything above.
+    assertEquals(token, cipher().decrypt(sealed), "and what comes back out is what she registered");
+
+    // Replacing the token replaces both, which is what re-seals a principal after a key change.
+    mvc.perform(
+            adminJson(patch(ADMIN_BASE + "/principals/" + name))
+                .content("{\"bearer_token\":\"dapi-dana-rotated\"}"))
+        .andExpect(status().isOk());
+    assertNotEquals(sealed, storedCatalogCredential(name));
+    assertEquals("dapi-dana-rotated", cipher().decrypt(storedCatalogCredential(name)));
+  }
+
+  /** Reads the stored form the way the server does, with the key the tests run under. */
+  private SecretCipher cipher() {
+    OpenSharingProperties properties = new OpenSharingProperties();
+    properties.getSecurity().setCredentialEncryptionKey(CREDENTIAL_KEY);
+    return new SecretCipher(properties);
+  }
+
+  /**
+   * A token longer than what can be stored is refused in those terms. Left to the insert it would
+   * come back as a conflict, telling an administrator the principal already exists.
+   */
+  @Test
+  void refusesATokenTooLongToStore() throws Exception {
+    mvc.perform(
+            bootstrap(post(ADMIN_BASE + "/principals"))
+                .content(
+                    "{\"name\":\""
+                        + unique("eve")
+                        + "@example.com\",\"bearer_token\":\""
+                        + "x".repeat(2049)
+                        + "\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.errorCode").value("INVALID_PARAMETER_VALUE"))
+        .andExpect(jsonPath("$.message").value(containsString("at most 2048")));
+  }
+
+  private String storedCatalogCredential(String principal) {
+    return storedColumn("catalog_credential", principal);
+  }
+
+  private String storedTokenHash(String principal) {
+    return storedColumn("token_hash", principal);
+  }
+
+  private String storedColumn(String column, String principal) {
+    return jdbc.queryForObject(
+        "select " + column + " from principals where name_lower = ?",
+        String.class,
+        principal.toLowerCase(Locale.ROOT));
   }
 
   @Test

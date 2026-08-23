@@ -13,6 +13,25 @@ public final class StoragePaths {
 
   private StoragePaths() {}
 
+  /**
+   * Whether a location is on the filesystem the server runs on, written either as a bare path or
+   * with a {@code file:} scheme.
+   *
+   * <p>Storage like this is reached without a credential, and a catalog is entitled to say so: Unity
+   * Catalog answers a vend for a local table with every credential block empty, which means there is
+   * nothing to hand out rather than that anything went wrong — its own reader takes the same answer
+   * and reads the table. Every other scheme names a cloud, where an empty answer is a catalog that
+   * has not been told about the bucket, and saying nothing was needed would turn a misconfiguration
+   * into a read that fails much further down.
+   */
+  public static boolean isLocal(String location) {
+    if (location == null || location.isBlank()) {
+      return false;
+    }
+    int scheme = location.indexOf(':');
+    return scheme < 0 || location.regionMatches(true, 0, "file:", 0, 5);
+  }
+
   /** Whether a path resolved against a root stays under it. */
   public static boolean isInside(String path, String root) {
     if (path == null || root == null || root.isBlank()) {

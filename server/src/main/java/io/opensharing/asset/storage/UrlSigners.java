@@ -28,6 +28,16 @@ public class UrlSigners {
     return signerFor(path).sign(path, credentials, capped(credentials, ttl));
   }
 
+  /**
+   * Whether a path is one this build could hand out a url for, which decides whether url access mode
+   * is offered at all: a table advertising a mode that refuses every one of its files would be worse
+   * than one that never offered it. Asked of the table's own location, since a table's files are
+   * under it and share its scheme.
+   */
+  public boolean canSign(String path) {
+    return path != null && byScheme.containsKey(scheme(path));
+  }
+
   private UrlSigner signerFor(String path) {
     String scheme = scheme(path);
     UrlSigner signer = byScheme.get(scheme);

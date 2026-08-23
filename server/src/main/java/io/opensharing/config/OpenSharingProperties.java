@@ -11,6 +11,7 @@ public class OpenSharingProperties {
   private String protocolPrefix = "/open-sharing";
 
   private final Admin admin = new Admin();
+  private final Security security = new Security();
   private final Activation activation = new Activation();
   private final RecipientTokens recipientTokens = new RecipientTokens();
   private final AssetCredentials assetCredentials = new AssetCredentials();
@@ -40,6 +41,10 @@ public class OpenSharingProperties {
 
   public Admin getAdmin() {
     return admin;
+  }
+
+  public Security getSecurity() {
+    return security;
   }
 
   public Activation getActivation() {
@@ -97,6 +102,29 @@ public class OpenSharingProperties {
 
     public void setBootstrapToken(String bootstrapToken) {
       this.bootstrapToken = bootstrapToken;
+    }
+  }
+
+  /** Secrets this server holds rather than merely recognizes. */
+  public static class Security {
+
+    /**
+     * Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the server can
+     * present it to the catalog while serving a recipient. Required: with no key a principal cannot
+     * be registered, because there would be nothing to ask the catalog with once they had gone.
+     *
+     * <p>It belongs somewhere a database dump does not reach: an environment variable, a mounted
+     * secret, a KMS. Rotating it means re-encrypting, so replace each credential through the admin
+     * API after changing it.
+     */
+    private String credentialEncryptionKey;
+
+    public String getCredentialEncryptionKey() {
+      return credentialEncryptionKey;
+    }
+
+    public void setCredentialEncryptionKey(String credentialEncryptionKey) {
+      this.credentialEncryptionKey = credentialEncryptionKey;
     }
   }
 
@@ -208,12 +236,29 @@ public class OpenSharingProperties {
     /** Region used to sign S3 urls when the catalog's credentials do not name one. */
     private String s3Region = "us-east-1";
 
+    /**
+     * Path to a Google service account key file, whose private key signs urls for {@code gs} paths.
+     *
+     * <p>Blank leaves {@code GOOGLE_APPLICATION_CREDENTIALS} to say where the key is, which is how
+     * the reference sharing server is pointed at one. With neither, no url is signed for Google
+     * storage and such a table is served in dir access mode only.
+     */
+    private String gcsServiceAccountKeyFile;
+
     public String getS3Region() {
       return s3Region;
     }
 
     public void setS3Region(String s3Region) {
       this.s3Region = s3Region;
+    }
+
+    public String getGcsServiceAccountKeyFile() {
+      return gcsServiceAccountKeyFile;
+    }
+
+    public void setGcsServiceAccountKeyFile(String gcsServiceAccountKeyFile) {
+      this.gcsServiceAccountKeyFile = gcsServiceAccountKeyFile;
     }
   }
 
@@ -247,13 +292,14 @@ public class OpenSharingProperties {
     }
   }
 
-  /** Which {@code CatalogConnector} to run with. */
+  /** Which {@code CatalogConnector} to run with, and what it needs to reach its catalog. */
   public static class Catalog {
 
-    /** Connector id. The prototype only ships {@code local}. */
+    /** Connector id: {@code local} or {@code unity}. */
     private String type = "local";
 
     private final Local local = new Local();
+    private final Unity unity = new Unity();
 
     public String getType() {
       return type;
@@ -265,6 +311,10 @@ public class OpenSharingProperties {
 
     public Local getLocal() {
       return local;
+    }
+
+    public Unity getUnity() {
+      return unity;
     }
 
     /** File-backed connector for local development. */
@@ -279,6 +329,50 @@ public class OpenSharingProperties {
 
       public void setFile(String file) {
         this.file = file;
+      }
+    }
+
+    /** Open-source Unity Catalog, over its REST API. */
+    public static class Unity {
+
+      /**
+       * Base url of the Unity Catalog API, including the path it is served under, such as {@code
+       * http://localhost:8081/api/2.1/unity-catalog}. Required to run with this connector.
+       *
+       * <p>No credential goes with it. Each request is made as the principal it concerns, with the
+       * credential held for them, so what this server can see in the catalog is never more than what
+       * the provider asking could see themselves.
+       */
+      private String uri;
+
+      /** How long to wait for the catalog to accept a connection. */
+      private Duration connectTimeout = Duration.ofSeconds(5);
+
+      /** How long to wait for a response, once connected. */
+      private Duration requestTimeout = Duration.ofSeconds(30);
+
+      public String getUri() {
+        return uri;
+      }
+
+      public void setUri(String uri) {
+        this.uri = uri;
+      }
+
+      public Duration getConnectTimeout() {
+        return connectTimeout;
+      }
+
+      public void setConnectTimeout(Duration connectTimeout) {
+        this.connectTimeout = connectTimeout;
+      }
+
+      public Duration getRequestTimeout() {
+        return requestTimeout;
+      }
+
+      public void setRequestTimeout(Duration requestTimeout) {
+        this.requestTimeout = requestTimeout;
       }
     }
   }

@@ -39,21 +39,45 @@ public class CredentialVendingService {
   }
 
   /**
+   * <p>A table with no grant behind it does not offer dir mode at all, so reaching the refusal below
+   * means a client asked for a mode the table never listed. It is still answered in words rather than
+   * left to fail on an absent credential, because nothing stops a client from calling this endpoint
+   * without reading what the table offers.
+   *
    * @param requestedLocation an explicit location from the request body, which must be the object's
    *     own location or one of its auxiliary locations
    */
   public TemporaryCredentials vend(SharedDataObjectEntity object, String requestedLocation) {
     ResolvedAsset resolved = resolution.resolveForServing(object);
     String location = resolveRequestedLocation(resolved, requestedLocation);
-    return toProtocol(mint(resolved, location), object);
+    StorageCredentials minted = mint(object, resolved, location);
+    if (minted == null) {
+      throw ApiException.notImplemented(
+          "'"
+              + object.getSharedAs()
+              + "' is not offered in dir access mode, because it is on storage the server reaches "
+              + "without a credential and the catalog holds none to vend for it; read it by url "
+              + "access mode, which is the mode its accessModes lists");
+    }
+    return toProtocol(minted, object);
   }
 
   /**
    * The credentials themselves, rather than their wire form. Reading a table's Delta log server-side
    * goes through here, so the server reads with exactly the access it would hand a recipient.
+   *
+   * <p>Takes the object as well as what resolving it produced, because minting is asked of the
+   * catalog as the owner of the share the object is in, and only the object knows which share that
+   * is.
+   *
+   * @return null for a table the catalog vends nothing for because nothing is needed — one on local
+   *     storage — which a caller that reads the table itself can carry on with, and one that has to
+   *     hand something to a recipient cannot
    */
-  public StorageCredentials mint(ResolvedAsset resolved, String location) {
+  public StorageCredentials mint(
+      SharedDataObjectEntity object, ResolvedAsset resolved, String location) {
     return resolution.vendCredentials(
+        object,
         new CredentialRequest(
             resolved.type(),
             resolved.identifier(),

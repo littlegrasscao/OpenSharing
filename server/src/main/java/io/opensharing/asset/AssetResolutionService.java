@@ -1,8 +1,9 @@
 package io.opensharing.asset;
 
+import io.opensharing.asset.storage.StoragePaths;
+import io.opensharing.asset.storage.UrlSigners;
 import io.opensharing.catalog.AccessMode;
 import io.opensharing.catalog.AssetAccessDeniedException;
-import io.opensharing.catalog.AssetAction;
 import io.opensharing.catalog.AssetLookup;
 import io.opensharing.catalog.AssetNotFoundException;
 import io.opensharing.catalog.AssetType;
@@ -17,6 +18,7 @@ import io.opensharing.catalog.UnsupportedAssetTypeException;
 import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
 import io.opensharing.http.ErrorCodes;
+import io.opensharing.principal.PrincipalStore;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -35,15 +37,21 @@ public class AssetResolutionService {
 
   private final CatalogConnector catalog;
   private final SharedDataObjectStore objects;
+  private final PrincipalStore principals;
   private final OpenSharingProperties properties;
+  private final UrlSigners signers;
 
   public AssetResolutionService(
       CatalogConnector catalog,
       SharedDataObjectStore objects,
-      OpenSharingProperties properties) {
+      PrincipalStore principals,
+      OpenSharingProperties properties,
+      UrlSigners signers) {
     this.catalog = catalog;
     this.objects = objects;
+    this.principals = principals;
     this.properties = properties;
+    this.signers = signers;
   }
 
   /**
@@ -54,7 +62,7 @@ public class AssetResolutionService {
   public ResolvedAsset resolveForRegistration(
       AssetType type, String catalogName, CatalogCaller caller) {
     try {
-      return catalog.resolveAsset(AssetLookup.of(type, catalogName), caller, AssetAction.SHARE);
+      return catalog.resolveAsset(AssetLookup.of(type, catalogName), caller);
     } catch (AssetNotFoundException e) {
       throw ApiException.invalidParameter(
           type + " '" + catalogName + "' does not exist in the " + catalog.name() + " catalog");
@@ -63,14 +71,14 @@ public class AssetResolutionService {
 
   /**
    * Re-resolves a shared object and refreshes its stored snapshot when the catalog has moved it. A
-   * source that has gone away, or that the sharing server may no longer read, is recorded on the
-   * object so it stops being listed instead of failing every request from now on.
+   * source that has gone away, or that may no longer be read, is recorded on the object so it stops
+   * being listed instead of failing every request from now on.
    */
   public ResolvedAsset resolveForServing(SharedDataObjectEntity object) {
     AssetLookup lookup = AssetLookup.of(object.getType(), object.getName());
     ResolvedAsset resolved;
     try {
-      resolved = catalog.resolveAsset(lookup, CatalogCaller.server(), AssetAction.READ);
+      resolved = catalog.resolveAsset(lookup, shareOwner(object));
     } catch (AssetNotFoundException | AssetAccessDeniedException e) {
       throw noLongerServable(object, e);
     }
@@ -79,6 +87,19 @@ public class AssetResolutionService {
       persistIfStored(object);
     }
     return resolved;
+  }
+
+  /**
+   * Who a recipient's read is resolved as: the owner of the share it came through.
+   *
+   * <p>A recipient is nobody the catalog has heard of, so they cannot be the caller. The provider who
+   * owns the share can be, and is the right one — a recipient reads by virtue of that provider's
+   * access, so a provider who loses it should take their recipients' access with them, which is what
+   * asking as them each time gets. An owner with no stored credential cannot be asked as, and the read
+   * fails rather than falling back to an identity whose access outlives theirs.
+   */
+  private CatalogCaller shareOwner(SharedDataObjectEntity object) {
+    return principals.catalogCallerFor(object.getShare().getOwner());
   }
 
   /**
@@ -110,15 +131,55 @@ public class AssetResolutionService {
   }
 
   /**
+   * A table may only be shared if a recipient would have some way of reading it. Neither way is this
+   * server's to promise on its own: directory access needs the catalog to vend for the location, and
+   * url access needs a Delta log and this build's leave to replay it. A table with neither would be
+   * accepted, listed, and then unreadable by any route a recipient could take. Asked while the
+   * provider is still on the phone, for the same reason a schema's enumerability is.
+   */
+  public void requireServable(ResolvedAsset table) {
+    if (!accessModesFor(table).isEmpty()) {
+      return;
+    }
+    throw ApiException.invalidParameter(
+        "no access mode could serve '"
+            + table.identifier()
+            + "' to a recipient: the "
+            + catalog.name()
+            + " catalog offers no credentials for "
+            + table.storageLocation()
+            + ", so it cannot be read as a directory, and "
+            + whyNoUrl(table));
+  }
+
+  private String whyNoUrl(ResolvedAsset table) {
+    if (!properties.getDelta().isUrlAccessEnabled()) {
+      return "url access mode is turned off on this server";
+    }
+    if (table.format() != TableFormat.DELTA) {
+      return "url access mode serves Delta tables, not "
+          + (table.format() == null ? "tables of unstated format" : table.format().wireName())
+          + " ones";
+    }
+    return "this build signs no url for the storage it is on, so url access mode cannot serve it "
+        + "either";
+  }
+
+  /**
    * The tables a shared schema holds right now. Asked on every listing rather than remembered, which
    * is the point of sharing a schema: a table added to it today is shared today, and one dropped
    * stops being offered without the provider doing anything.
+   *
+   * <p>A table no access mode could serve is left out, as the connector already leaves out the ones
+   * it cannot resolve at all: sharing a schema offers whatever is in it, and a table a recipient
+   * could not read by any route is better absent than listed and dead to the touch.
    */
   public List<ResolvedAsset> listSharedSchemaTables(SharedDataObjectEntity schemaGrant) {
     AssetLookup lookup = AssetLookup.of(schemaGrant.getType(), schemaGrant.getName());
     try {
-      return catalog.listChildren(lookup, CatalogCaller.server()).stream()
+      return catalog.listChildren(lookup, shareOwner(schemaGrant)).stream()
           .filter(child -> child.type() == AssetType.TABLE)
+          .filter(child -> !accessModesFor(child).isEmpty())
           .toList();
     } catch (AssetNotFoundException | AssetAccessDeniedException e) {
       throw noLongerServable(schemaGrant, e);
@@ -126,13 +187,33 @@ public class AssetResolutionService {
   }
 
   /**
-   * Asks the catalog to mint credentials for an object's location. A catalog may answer with one
-   * entry per prefix the asset spans, so the one covering the location being read is selected here,
-   * longest prefix first, since a catalog can return both a bucket-wide and a table-specific grant.
+   * Asks the catalog, as the owner of the share, to mint credentials for an object's location. A
+   * catalog may answer with one entry per prefix the asset spans, so the one covering the location
+   * being read is selected here, longest prefix first, since a catalog can return both a bucket-wide
+   * and a table-specific grant.
+   *
+   * <p>A catalog that authorizes this call separately from resolving — Unity Catalog wants {@code USE
+   * CATALOG}, {@code USE SCHEMA} and {@code SELECT} before it will mint — can refuse it having just
+   * answered where the table lives. That withdraws the object exactly as a refused resolution does,
+   * and is reported the same way, which is what keeps the owner the call was made as out of an answer
+   * a recipient reads.
+   *
+   * @return null when the table is on storage reached without a credential, which a catalog states
+   *     by vending nothing for a local path; the read then goes ahead on the deployment's own
+   *     filesystem access, which is all such a table was ever readable by
    */
-  public StorageCredentials vendCredentials(CredentialRequest request) {
-    List<StorageCredentials> minted = catalog.getStorageCredentials(request);
+  public StorageCredentials vendCredentials(
+      SharedDataObjectEntity object, CredentialRequest request) {
+    List<StorageCredentials> minted;
+    try {
+      minted = catalog.getStorageCredentials(request, shareOwner(object));
+    } catch (AssetNotFoundException | AssetAccessDeniedException e) {
+      throw noLongerServable(object, e);
+    }
     if (minted == null || minted.isEmpty()) {
+      if (StoragePaths.isLocal(request.storageLocation())) {
+        return null;
+      }
       throw new CatalogException(
           "the " + catalog.name() + " catalog vended no credentials for '" + request.identifier() + "'");
     }
@@ -168,17 +249,27 @@ public class AssetResolutionService {
   }
 
   /**
-   * An object is readable as a directory whenever the catalog can scope credentials to its location,
-   * and by url only if this server can actually serve one: a Delta table, with log reading turned on.
-   * The protocol lets a client pick a mode from this list, so advertising one that would then answer
-   * {@code NOT_IMPLEMENTED} would send it down a road with no end.
+   * The modes a recipient may pick from, which the protocol lets them pick from freely — so a mode
+   * advertised here and then answered with {@code NOT_IMPLEMENTED} would send a client down a road
+   * with no end.
+   *
+   * <p>Directory access is the catalog's to offer, because it comes down to whether the catalog will
+   * scope credentials to the location, and only the catalog knows: Unity Catalog mints for a bucket
+   * and has nothing to mint for a path on this machine. A location alone was once taken as enough,
+   * which offered the mode to every table with somewhere to live, including the ones no grant exists
+   * for. Url access is this server's to offer, and takes three things: a Delta log to replay, leave
+   * to replay it, and a signer for the storage it sits on — a build that cannot sign for a scheme
+   * would replay the log and then refuse every file it found.
    */
   private Set<AccessMode> accessModesFor(ResolvedAsset resolved) {
     Set<AccessMode> modes = new LinkedHashSet<>(resolved.accessModes());
-    if (resolved.storageLocation() != null && !resolved.storageLocation().isBlank()) {
-      modes.add(AccessMode.DIR);
+    if (resolved.storageLocation() == null || resolved.storageLocation().isBlank()) {
+      // A directory read is given nothing but the location, so the mode cannot stand without one.
+      modes.remove(AccessMode.DIR);
     }
-    if (properties.getDelta().isUrlAccessEnabled() && resolved.format() == TableFormat.DELTA) {
+    if (properties.getDelta().isUrlAccessEnabled()
+        && resolved.format() == TableFormat.DELTA
+        && signers.canSign(resolved.storageLocation())) {
       modes.add(AccessMode.URL);
     } else {
       modes.remove(AccessMode.URL);

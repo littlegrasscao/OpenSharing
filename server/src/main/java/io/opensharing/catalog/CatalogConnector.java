@@ -14,8 +14,8 @@ import java.util.List;
  * one stays close to those two calls. {@link #listChildren} is offered on top for a catalog that can
  * enumerate, and is what a provider needs to share a whole schema rather than a list of tables.
  *
- * <p>Implementations authenticate to the catalog as a service principal and are expected to be
- * thread-safe.
+ * <p>Implementations authenticate to the catalog as the {@link CatalogCaller} each request names,
+ * and are expected to be thread-safe.
  */
 public interface CatalogConnector {
 
@@ -23,22 +23,37 @@ public interface CatalogConnector {
   String name();
 
   /**
-   * Resolves an asset to its physical location, as a given caller and for a stated purpose, so that
-   * a catalog owning authorization can refuse. Called when an asset is added to a share and again
-   * when credentials are vended, so a relocation is picked up rather than served from a stale
-   * snapshot.
+   * Resolves an asset to its physical location, as a given caller, so that a catalog owning
+   * authorization can refuse. Called when an asset is added to a share and again when credentials are
+   * vended, so a relocation is picked up rather than served from a stale snapshot.
+   *
+   * <p>Either way the caller is a provider-side principal, and what to ask of them is whether they may
+   * share the asset — not whether they own it. Databricks, whose model this follows, lets anyone with
+   * {@code SELECT} on a table or view add it to a share, given {@code USE CATALOG} and {@code USE
+   * SCHEMA} on the parents that hold it; a connector demanding ownership would refuse a provider
+   * Databricks allows. The other half of that rule, that the caller must also own the share, is this
+   * server's own to enforce and is never asked of a catalog.
+   *
+   * <p>Adding names the admin making the request. Serving names the owner of the share the recipient
+   * reads through, which is deliberate rather than incidental: a recipient reads by virtue of that
+   * provider's access, so asking as them each time is what makes a provider who loses access take
+   * their recipients' access with them.
+   *
+   * <p>A caller always carries both a name and a credential to act as them with, so an implementation
+   * never has to decide what to do without one. A connector authenticates to the catalog as the caller
+   * and lets it answer; there is no service identity to fall back to, because a read that succeeded on
+   * the server's own access rather than the owner's would outlive the owner's.
    *
    * <p>This doubles as the existence check. There is no separate one, because every caller that
    * wants to know whether an asset exists also wants the metadata that proves it.
    *
-   * @param caller the principal the request is made for, or {@link CatalogCaller#server()}
-   * @param intent what the caller means to do with the asset
+   * @param caller the principal the request is made for
    * @throws AssetNotFoundException if the catalog has no such asset
    * @throws AssetAccessDeniedException if the caller may not do this with the asset
    * @throws CatalogAuthenticationException if the catalog rejects the connector's own credentials
    * @throws CatalogException if the catalog cannot be reached or refuses the request
    */
-  ResolvedAsset resolveAsset(AssetLookup lookup, CatalogCaller caller, AssetAction intent);
+  ResolvedAsset resolveAsset(AssetLookup lookup, CatalogCaller caller);
 
   /**
    * Lists the assets a container holds, which is what makes sharing a whole schema possible: the
@@ -65,13 +80,23 @@ public interface CatalogConnector {
   }
 
   /**
-   * Mints credentials scoped to the asset's storage location.
+   * Mints credentials scoped to the asset's storage location, as a given caller.
    *
    * <p>Returns one entry per storage prefix the asset spans, mirroring the Iceberg REST
    * {@code LoadCredentialsResponse}; a catalog that scopes to a single prefix returns a single
    * element. The caller picks the entry covering the location it is about to read.
    *
+   * <p>The caller is the owner of the share being read through, as it is for {@link #resolveAsset}
+   * and for the same reason: this is the moment access to the bytes is handed out, so it is the
+   * moment a catalog most wants to decide, and a grant minted on any other identity would be one the
+   * owner losing access does not take away.
+   *
+   * <p>An empty answer means the asset's storage needs no credential, and is only taken that way for
+   * a local path — the one storage the server reaches on its own account. From a cloud location an
+   * empty answer is a catalog with nothing configured for the bucket, and is reported as a failure
+   * rather than quietly turned into a read that cannot work.
+   *
    * @throws CatalogException if the catalog refuses or cannot mint credentials
    */
-  List<StorageCredentials> getStorageCredentials(CredentialRequest request);
+  List<StorageCredentials> getStorageCredentials(CredentialRequest request, CatalogCaller caller);
 }

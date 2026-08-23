@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -13,11 +14,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /** The recipient-facing protocol API, exercised the way a recipient client would. */
 class RecipientProtocolApiTest extends ServerTestBase {
+
+  @Autowired private JdbcTemplate jdbc;
 
   private String share;
   private String recipient;
@@ -49,6 +55,66 @@ class RecipientProtocolApiTest extends ServerTestBase {
                 .header("Authorization", "Bearer " + token))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.errorCode").value("RESOURCE_DOES_NOT_EXIST"));
+  }
+
+  /**
+   * The whole round trip of the owner's sealed token: stored when she registered, read back out when a
+   * recipient's request re-resolves the table, and the read served as her.
+   */
+  @Test
+  void servesAReadAsTheShareOwner() throws Exception {
+    JsonNode table = protocolGet(token, "/shares/" + share + "/schemas/sales/tables");
+
+    assertEquals(List.of("forecast", "orders"), names(table));
+    mvc.perform(
+            post(PROTOCOL_BASE
+                    + "/shares/"
+                    + share
+                    + "/schemas/sales/tables/orders/temporary-table-credentials")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"operation\":\"READ\"}"))
+        .andExpect(status().isOk());
+  }
+
+  /**
+   * A principal registered before the login token was also kept for the catalog has nothing to ask it
+   * with, which no API call can produce any more — hence the direct write. The read stops rather than
+   * quietly going out as the server, whose access nobody granted and would outlive what it stood in
+   * for. What the recipient is told says that much and no more: which provider is short a credential,
+   * and how to fix it, are for the log.
+   */
+  @Test
+  void refusesToServeWhenNothingIsStoredToAskTheCatalogWith() throws Exception {
+    String sealed =
+        jdbc.queryForObject(
+            "select catalog_credential from principals where name_lower = ?",
+            String.class,
+            ALICE.toLowerCase(Locale.ROOT));
+    jdbc.update("update principals set catalog_credential = null where name_lower = ?",
+        ALICE.toLowerCase(Locale.ROOT));
+
+    try {
+      refusedRead();
+    } finally {
+      jdbc.update("update principals set catalog_credential = ? where name_lower = ?",
+          sealed, ALICE.toLowerCase(Locale.ROOT));
+    }
+  }
+
+  private void refusedRead() throws Exception {
+    mvc.perform(
+            post(PROTOCOL_BASE
+                    + "/shares/"
+                    + share
+                    + "/schemas/sales/tables/orders/temporary-table-credentials")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"operation\":\"READ\"}"))
+        .andExpect(status().isInternalServerError())
+        .andExpect(jsonPath("$.errorCode").value("INTERNAL_ERROR"))
+        .andExpect(jsonPath("$.message").value(containsString("no credential stored")))
+        .andExpect(jsonPath("$.message").value(not(containsString(ALICE))));
   }
 
   @Test

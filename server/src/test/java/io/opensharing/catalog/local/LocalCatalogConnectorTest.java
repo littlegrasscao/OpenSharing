@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.opensharing.catalog.AccessMode;
 import io.opensharing.catalog.AssetAccessDeniedException;
-import io.opensharing.catalog.AssetAction;
 import io.opensharing.catalog.AssetLookup;
 import io.opensharing.catalog.AssetNotFoundException;
 import io.opensharing.catalog.AssetType;
@@ -52,6 +51,8 @@ class LocalCatalogConnectorTest {
             - alice@example.com
       """;
 
+  private static final CatalogCaller ALICE = CatalogCaller.of("alice@example.com", "secret");
+
   private static LocalCatalogConnector connector(String yaml) {
     return new LocalCatalogConnector(
         LocalCatalogLoader.load(
@@ -60,7 +61,7 @@ class LocalCatalogConnectorTest {
 
   @Test
   void resolvesTableWithFormatAndDirectoryAccess() {
-    ResolvedAsset asset = resolve(CATALOG, "main.sales.orders", CatalogCaller.server());
+    ResolvedAsset asset = resolve(CATALOG, "main.sales.orders", ALICE);
 
     assertEquals("s3://lake/sales/orders/", asset.storageLocation());
     assertEquals(TableFormat.DELTA, asset.format());
@@ -71,7 +72,7 @@ class LocalCatalogConnectorTest {
 
   @Test
   void treatsAssetsWithoutAnExplicitTypeAsTables() {
-    ResolvedAsset asset = resolve(CATALOG, "main.research.notes", CatalogCaller.server());
+    ResolvedAsset asset = resolve(CATALOG, "main.research.notes", ALICE);
 
     assertEquals(AssetType.TABLE, asset.type());
     assertEquals(TableFormat.ICEBERG, asset.format());
@@ -81,7 +82,7 @@ class LocalCatalogConnectorTest {
   void resolvesNamesCaseInsensitively() {
     assertEquals(
         "s3://lake/sales/orders/",
-        resolve(CATALOG, "MAIN.Sales.Orders", CatalogCaller.server()).storageLocation());
+        resolve(CATALOG, "MAIN.Sales.Orders", ALICE).storageLocation());
   }
 
   @Test
@@ -91,42 +92,28 @@ class LocalCatalogConnectorTest {
 
     assertThrows(
         AssetNotFoundException.class,
-        () -> connector.resolveAsset(lookup, CatalogCaller.server(), AssetAction.SHARE));
+        () -> connector.resolveAsset(lookup, ALICE));
   }
 
+  /**
+   * Serving consults the same list, of the owner of the share being read through, so this is what
+   * revokes an existing read as well as what refuses a new share. The credential each caller carries
+   * is ignored: this file authenticates nobody, it only recognizes names.
+   */
   @Test
   void letsOnlyTheListedPrincipalsShareARestrictedAsset() {
     assertEquals(
         "s3://lake/finance/ledger/",
-        resolve(CATALOG, "main.finance.ledger", CatalogCaller.of("alice@example.com", "secret"))
-            .storageLocation());
+        resolve(CATALOG, "main.finance.ledger", ALICE).storageLocation());
 
     LocalCatalogConnector connector = connector(CATALOG);
     AssetLookup lookup = AssetLookup.of(AssetType.TABLE, "main.finance.ledger");
-    CatalogCaller bob = CatalogCaller.of("bob@example.com", "secret");
-    assertThrows(
-        AssetAccessDeniedException.class,
-        () -> connector.resolveAsset(lookup, bob, AssetAction.SHARE));
-  }
-
-  @Test
-  void keepsServingARestrictedAssetOnceItIsShared() {
-    // sharableBy gates who may share, not who may read: serving resolves as the server, for an
-    // object a listed principal already put into a share.
-    assertEquals(
-        "s3://lake/finance/ledger/",
-        resolve(CATALOG, "main.finance.ledger", CatalogCaller.server(), AssetAction.READ)
-            .storageLocation());
+    CatalogCaller bob = CatalogCaller.of("bob@example.com", "bob-catalog-credential");
+    assertThrows(AssetAccessDeniedException.class, () -> connector.resolveAsset(lookup, bob));
   }
 
   private static ResolvedAsset resolve(String yaml, String identifier, CatalogCaller caller) {
-    return resolve(yaml, identifier, caller, AssetAction.SHARE);
-  }
-
-  private static ResolvedAsset resolve(
-      String yaml, String identifier, CatalogCaller caller, AssetAction intent) {
-    return connector(yaml)
-        .resolveAsset(AssetLookup.of(AssetType.TABLE, identifier), caller, intent);
+    return connector(yaml).resolveAsset(AssetLookup.of(AssetType.TABLE, identifier), caller);
   }
 
   @Test
@@ -141,7 +128,7 @@ class LocalCatalogConnectorTest {
             schema: '{"type":"struct","fields":[]}'
         """;
 
-    ResolvedAsset asset = resolve(yaml, "main.research.trials", CatalogCaller.server());
+    ResolvedAsset asset = resolve(yaml, "main.research.trials", ALICE);
 
     assertEquals(
         "s3://lake/research/trials/metadata/v3.metadata.json", asset.metadataLocation());
@@ -159,7 +146,8 @@ class LocalCatalogConnectorTest {
                     "main.sales.orders",
                     "s3://lake/sales/orders/",
                     StorageOperation.READ,
-                    Duration.ofMinutes(5)));
+                    Duration.ofMinutes(5)),
+                ALICE);
 
     assertEquals(1, vended.size(), "this connector scopes to the one location it was asked about");
     StorageCredentials credentials = vended.get(0);
@@ -194,7 +182,8 @@ class LocalCatalogConnectorTest {
                     null,
                     "abfss://lake@acme.dfs.core.windows.net/sales/orders/",
                     StorageOperation.READ,
-                    null))
+                    null),
+                ALICE)
             .get(0);
 
     assertEquals(CloudProvider.AZURE, credentials.provider());
@@ -224,7 +213,7 @@ class LocalCatalogConnectorTest {
             StorageOperation.READ,
             null);
 
-    assertThrows(CatalogException.class, () -> connector.getStorageCredentials(request));
+    assertThrows(CatalogException.class, () -> connector.getStorageCredentials(request, ALICE));
   }
 
   @Test
@@ -245,7 +234,7 @@ class LocalCatalogConnectorTest {
 
     List<ResolvedAsset> children =
         connector(yaml)
-            .listChildren(AssetLookup.of(AssetType.SCHEMA, "MAIN.HR"), CatalogCaller.server());
+            .listChildren(AssetLookup.of(AssetType.SCHEMA, "MAIN.HR"), ALICE);
 
     assertEquals(
         List.of("main.hr.employees"),
@@ -261,7 +250,7 @@ class LocalCatalogConnectorTest {
 
     assertThrows(
         UnsupportedAssetTypeException.class,
-        () -> connector.listChildren(table, CatalogCaller.server()));
+        () -> connector.listChildren(table, ALICE));
   }
 
   @Test
@@ -271,7 +260,7 @@ class LocalCatalogConnectorTest {
 
     assertThrows(
         AssetNotFoundException.class,
-        () -> connector.listChildren(schema, CatalogCaller.server()));
+        () -> connector.listChildren(schema, ALICE));
   }
 
   @Test

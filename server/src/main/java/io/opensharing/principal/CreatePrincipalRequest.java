@@ -6,8 +6,10 @@ import jakarta.validation.constraints.NotBlank;
 /**
  * @param id the UUID to register the principal under, or null to have the server generate one. Giving
  *     it lets a principal keep the id it already has in an external directory.
- * @param bearerToken the secret the principal will authenticate with, chosen by the caller. Only its
- *     hash is stored, and the server never returns or logs the value.
+ * @param bearerToken the principal's catalog credential, which is also what they authenticate to this
+ *     server with. One secret doing both jobs is deliberate: the server asks the catalog as whoever
+ *     shared an asset, so it has to hold something the catalog accepts as them, and a second secret
+ *     would only have to be kept identical to this one to behave. Never returned or logged.
  */
 @AdminJson
 public record CreatePrincipalRequest(

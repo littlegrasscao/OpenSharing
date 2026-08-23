@@ -1,12 +1,19 @@
 package io.opensharing.asset;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import io.opensharing.asset.storage.LocalFileUrlSigner;
+import io.opensharing.asset.storage.S3UrlSigner;
+import io.opensharing.asset.storage.UrlSigners;
+import io.opensharing.catalog.AccessMode;
 import io.opensharing.catalog.AssetAccessDeniedException;
-import io.opensharing.catalog.AssetAction;
 import io.opensharing.catalog.AssetLookup;
 import io.opensharing.catalog.AssetNotFoundException;
 import io.opensharing.catalog.AssetType;
@@ -22,9 +29,14 @@ import io.opensharing.catalog.StorageOperation;
 import io.opensharing.catalog.TableFormat;
 import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
+import io.opensharing.principal.PrincipalEntity;
+import io.opensharing.principal.PrincipalStore;
+import io.opensharing.share.ShareEntity;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -36,6 +48,9 @@ import org.springframework.http.HttpStatus;
 class AssetResolutionServiceTest {
 
   private static final String NAME = "main.sales.orders";
+  private static final String OWNER = "alice@example.com";
+  private static final CatalogCaller OWNER_CALLER =
+      CatalogCaller.of(OWNER, "alice-catalog-credential");
 
   @Test
   void recordsThatASourceHasGoneMissing() {
@@ -54,12 +69,12 @@ class AssetResolutionServiceTest {
   }
 
   @Test
-  void recordsThatTheServerMayNoLongerReadTheSource() {
+  void recordsThatTheOwnerMayNoLongerReadTheSource() {
     SharedDataObjectEntity object = sharedObject();
     AssetResolutionService resolution =
         serviceThat(
             lookup -> {
-              throw new AssetAccessDeniedException(lookup, CatalogCaller.server());
+              throw new AssetAccessDeniedException(lookup, OWNER_CALLER);
             });
 
     ApiException failure =
@@ -87,8 +102,30 @@ class AssetResolutionServiceTest {
     assertEquals("s3://lake/sales/orders/", object.getStorageLocation());
   }
 
+  @Test
+  void resolvesWhatARecipientReadsAsTheOwnerOfTheShare() {
+    SharedDataObjectEntity object = sharedObject();
+    AtomicReference<CatalogCaller> asked = new AtomicReference<>();
+    AssetResolutionService resolution =
+        service(
+            lookup -> ResolvedAsset.builder(AssetType.TABLE, lookup.identifier()).build(),
+            request -> List.of(),
+            OWNER_CALLER,
+            asked);
+
+    resolution.resolveForServing(object);
+
+    assertEquals(OWNER, asked.get().name(), "the recipient is nobody the catalog knows");
+    assertEquals("alice-catalog-credential", asked.get().bearerToken());
+  }
+
   private static SharedDataObjectEntity sharedObject() {
+    PrincipalEntity owner = new PrincipalEntity();
+    owner.setName(OWNER);
+    ShareEntity share = new ShareEntity();
+    share.setOwner(owner);
     SharedDataObjectEntity object = new SharedDataObjectEntity();
+    object.setShare(share);
     object.setName(NAME);
     object.setType(AssetType.TABLE);
     object.setSharedAs("sales.orders");
@@ -106,7 +143,9 @@ class AssetResolutionServiceTest {
 
     assertEquals(
         "s3://lake/sales/orders/",
-        resolution.vendCredentials(requestFor("s3://lake/sales/orders/data/")).prefix());
+        resolution
+            .vendCredentials(sharedObject(), requestFor("s3://lake/sales/orders/data/"))
+            .prefix());
   }
 
   @Test
@@ -116,17 +155,105 @@ class AssetResolutionServiceTest {
     CatalogException failure =
         assertThrows(
             CatalogException.class,
-            () -> resolution.vendCredentials(requestFor("s3://lake/sales/orders/")));
+            () ->
+                resolution.vendCredentials(sharedObject(), requestFor("s3://lake/sales/orders/")));
     assertTrue(failure.getMessage().contains("none covering"));
   }
 
   @Test
-  void refusesAnEmptyVend() {
+  void refusesAnEmptyVendForATableInTheCloud() {
     AssetResolutionService resolution = serviceVending(List.of());
 
     assertThrows(
         CatalogException.class,
-        () -> resolution.vendCredentials(requestFor("s3://lake/sales/orders/")));
+        () -> resolution.vendCredentials(sharedObject(), requestFor("s3://lake/sales/orders/")));
+  }
+
+  /**
+   * Storage the server reaches on its own account has nothing to vend, and a catalog says so by
+   * vending nothing: Unity Catalog answers a local table exactly this way, and reads it itself on
+   * the same answer. Refusing that would refuse a table that is perfectly readable, so the absence
+   * is passed on as an absence — from a local path only, which is what keeps the case above a
+   * failure.
+   */
+  @Test
+  void takesAnEmptyVendForALocalTableAsNothingBeingNeeded() {
+    AssetResolutionService resolution = serviceVending(List.of());
+
+    assertNull(resolution.vendCredentials(sharedObject(), requestFor("file:/srv/lake/orders/")));
+    assertNull(resolution.vendCredentials(sharedObject(), requestFor("/srv/lake/orders/")));
+  }
+
+  /**
+   * A catalog that authorizes minting separately can refuse it after having resolved the table
+   * happily. What a recipient is told then must not name the owner the catalog was asked as, which
+   * is no business of theirs, and the object must be recorded as unservable just as a refused
+   * resolution records it.
+   */
+  @Test
+  void tellsARecipientNothingAboutTheOwnerWhenTheCatalogWillNotMint() {
+    SharedDataObjectEntity object = sharedObject();
+    AssetResolutionService resolution =
+        service(
+            lookup -> ResolvedAsset.builder(AssetType.TABLE, lookup.identifier()).build(),
+            request -> {
+              throw new AssetAccessDeniedException(
+                  AssetLookup.of(AssetType.TABLE, NAME), OWNER_CALLER);
+            });
+
+    ApiException failure =
+        assertThrows(
+            ApiException.class,
+            () -> resolution.vendCredentials(object, requestFor("s3://lake/sales/orders/")));
+
+    assertEquals(HttpStatus.FORBIDDEN, failure.getStatus());
+    assertEquals(SharedObjectStatus.PERMISSION_DENIED, object.getStatus());
+    assertFalse(failure.getMessage().contains(OWNER), "the owner is not the recipient's business");
+    assertFalse(
+        failure.getMessage().contains("alice-catalog-credential"),
+        "and neither is what they were asked as");
+  }
+
+  /**
+   * Both ways of reading rest on something outside this server's gift, and a table can fall between
+   * them: nothing is vended for a local path, and a parquet table has no log to replay and hand out
+   * urls from. Sharing it would promise a recipient a table no route reaches, so the provider hears
+   * it now, with both halves of the reason.
+   */
+  @Test
+  void refusesToShareATableNoAccessModeCouldServe() {
+    AssetResolutionService resolution = serviceVending(List.of());
+
+    ApiException failure =
+        assertThrows(
+            ApiException.class,
+            () ->
+                resolution.requireServable(
+                    ResolvedAsset.builder(AssetType.TABLE, NAME)
+                        .storageLocation("/srv/lake/orders")
+                        .format(TableFormat.PARQUET)
+                        .build()));
+
+    assertEquals(HttpStatus.BAD_REQUEST, failure.getStatus());
+    assertTrue(failure.getMessage().contains("no credentials for /srv/lake/orders"));
+    assertTrue(failure.getMessage().contains("serves Delta tables, not parquet ones"));
+  }
+
+  @Test
+  void sharesATableEitherModeCanServe() {
+    AssetResolutionService resolution = serviceVending(List.of());
+
+    resolution.requireServable(
+        ResolvedAsset.builder(AssetType.TABLE, NAME)
+            .storageLocation("/srv/lake/orders")
+            .format(TableFormat.DELTA)
+            .build());
+    resolution.requireServable(
+        ResolvedAsset.builder(AssetType.TABLE, NAME)
+            .storageLocation("s3://lake/sales/orders/")
+            .format(TableFormat.PARQUET)
+            .accessModes(Set.of(AccessMode.DIR))
+            .build());
   }
 
   private static StorageCredentials credentialsFor(String prefix) {
@@ -153,6 +280,14 @@ class AssetResolutionServiceTest {
   private static AssetResolutionService service(
       Function<AssetLookup, ResolvedAsset> resolveAsset,
       Function<CredentialRequest, List<StorageCredentials>> vend) {
+    return service(resolveAsset, vend, OWNER_CALLER, new AtomicReference<>());
+  }
+
+  private static AssetResolutionService service(
+      Function<AssetLookup, ResolvedAsset> resolveAsset,
+      Function<CredentialRequest, List<StorageCredentials>> vend,
+      CatalogCaller ownerCaller,
+      AtomicReference<CatalogCaller> asked) {
     CatalogConnector catalog =
         new CatalogConnector() {
           @Override
@@ -161,17 +296,26 @@ class AssetResolutionServiceTest {
           }
 
           @Override
-          public ResolvedAsset resolveAsset(
-              AssetLookup lookup, CatalogCaller caller, AssetAction intent) {
+          public ResolvedAsset resolveAsset(AssetLookup lookup, CatalogCaller caller) {
+            asked.set(caller);
             return resolveAsset.apply(lookup);
           }
 
           @Override
-          public List<StorageCredentials> getStorageCredentials(CredentialRequest request) {
+          public List<StorageCredentials> getStorageCredentials(
+              CredentialRequest request, CatalogCaller caller) {
+            asked.set(caller);
             return vend.apply(request);
           }
         };
+    PrincipalStore principals = mock(PrincipalStore.class);
+    when(principals.catalogCallerFor(any())).thenReturn(ownerCaller);
     return new AssetResolutionService(
-        catalog, mock(SharedDataObjectStore.class), new OpenSharingProperties());
+        catalog,
+        mock(SharedDataObjectStore.class),
+        principals,
+        new OpenSharingProperties(),
+        // The signers a real deployment has for the clouds these tests name locations on.
+        new UrlSigners(List.of(new S3UrlSigner(new OpenSharingProperties()), new LocalFileUrlSigner())));
   }
 }

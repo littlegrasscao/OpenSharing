@@ -2,7 +2,6 @@ package io.opensharing.catalog.local;
 
 import io.opensharing.catalog.AccessMode;
 import io.opensharing.catalog.AssetAccessDeniedException;
-import io.opensharing.catalog.AssetAction;
 import io.opensharing.catalog.AssetLookup;
 import io.opensharing.catalog.AssetNotFoundException;
 import io.opensharing.catalog.AssetType;
@@ -74,12 +73,12 @@ public final class LocalCatalogConnector implements CatalogConnector {
   }
 
   @Override
-  public ResolvedAsset resolveAsset(AssetLookup lookup, CatalogCaller caller, AssetAction intent) {
+  public ResolvedAsset resolveAsset(AssetLookup lookup, CatalogCaller caller) {
     LocalCatalogFile.Asset asset = assetsByIdentifier.get(key(lookup.type(), lookup.identifier()));
     if (asset == null) {
       throw new AssetNotFoundException(lookup);
     }
-    if (!allows(asset, caller, intent)) {
+    if (!allows(asset, caller)) {
       throw new AssetAccessDeniedException(lookup, caller);
     }
     return resolved(asset);
@@ -128,21 +127,30 @@ public final class LocalCatalogConnector implements CatalogConnector {
   }
 
   /**
-   * The file's {@code sharableBy} names who may put an asset into a share, so it bears on {@link
-   * AssetAction#SHARE} alone. A read arrives as the server resolving for a recipient, against an
-   * object some provider admin was already allowed to share.
+   * The file's {@code sharableBy} names who may share an asset, and every request names somebody, so
+   * the same list answers both times it is consulted: when a provider adds the asset, and on each read
+   * of it, which is asked for the owner of the share being read through. Taking a principal off the
+   * list therefore stops what they already shared as well as what they might share next, which is the
+   * revocation a real catalog would apply. The credential that arrives with the name is ignored: this
+   * file authenticates nobody, it only recognizes names.
    */
-  private static boolean allows(
-      LocalCatalogFile.Asset asset, CatalogCaller caller, AssetAction intent) {
-    if (intent != AssetAction.SHARE || asset.sharableBy().isEmpty() || caller.isServer()) {
+  private static boolean allows(LocalCatalogFile.Asset asset, CatalogCaller caller) {
+    if (asset.sharableBy().isEmpty()) {
       return true;
     }
     return asset.sharableBy().stream().anyMatch(name -> name.equalsIgnoreCase(caller.name()));
   }
 
-  /** This connector scopes to the one location it was asked about, so the list has one element. */
+  /**
+   * This connector scopes to the one location it was asked about, so the list has one element.
+   *
+   * <p>The caller is ignored, and not only because this file authenticates nobody: minting is always
+   * preceded by a resolution of the same asset as the same caller, which is where {@code sharableBy}
+   * is consulted, so asking it again here would ask a question already answered.
+   */
   @Override
-  public List<StorageCredentials> getStorageCredentials(CredentialRequest request) {
+  public List<StorageCredentials> getStorageCredentials(
+      CredentialRequest request, CatalogCaller caller) {
     if (request.storageLocation() == null || request.storageLocation().isBlank()) {
       throw new CatalogException(
           "asset '" + request.identifier() + "' has no storage location to scope credentials to");
@@ -211,6 +219,10 @@ public final class LocalCatalogConnector implements CatalogConnector {
     };
   }
 
+  /**
+   * What the file says, or directory access for anything with a location: this connector vends for
+   * every location it is given, real or fake, so there is no location it cannot offer the mode for.
+   */
   private static Set<AccessMode> accessModes(LocalCatalogFile.Asset asset) {
     if (!asset.accessModes().isEmpty()) {
       return asset.accessModes().stream()

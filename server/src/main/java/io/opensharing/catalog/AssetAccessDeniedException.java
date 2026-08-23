@@ -8,8 +8,9 @@ public class AssetAccessDeniedException extends CatalogException {
 
   public AssetAccessDeniedException(AssetLookup lookup, CatalogCaller caller) {
     super(
-        (caller.isServer() ? "the sharing server" : "'" + caller.name() + "'")
-            + " may not share "
+        "'"
+            + caller.name()
+            + "' may not share "
             + lookup.type()
             + " '"
             + lookup.identifier()
