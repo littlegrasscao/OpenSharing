@@ -1,6 +1,7 @@
 package io.opensharing.asset.delta;
 
 import io.opensharing.asset.SharedDataObjectEntity;
+import io.opensharing.catalog.ResolvedAsset;
 import io.opensharing.catalog.TableFormat;
 import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
@@ -49,17 +50,19 @@ public class DeltaTableOperations implements TableOperations {
   }
 
   @Override
-  public long version(SharedDataObjectEntity table, TableRequests.Version request) {
+  public long version(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Version request) {
     requireUrlAccess();
-    return tables.version(table, DeltaVersion.parse(request.startingTimestamp()));
+    return tables.version(table, resolved, DeltaVersion.parse(request.startingTimestamp()));
   }
 
   @Override
-  public ActionStream metadata(SharedDataObjectEntity table, TableRequests.Metadata request) {
+  public ActionStream metadata(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Metadata request) {
     requireUrlAccess();
     DeltaSharingCapabilities capabilities = DeltaSharingCapabilities.parse(request.capabilities());
     DeltaVersion at = DeltaVersion.from(request.version(), request.timestamp());
-    DeltaTable delta = tables.read(table, at, false);
+    DeltaTable delta = tables.read(table, resolved, at, false);
     DeltaResponseFormat format = capabilities.chooseFormat(delta.snapshot());
     return stream(
         responses.in(format).metadata(table, delta, !at.isLatest(), capabilities),
@@ -75,17 +78,18 @@ public class DeltaTableOperations implements TableOperations {
    * the table does, while everything else asks what the table holds.
    */
   @Override
-  public ActionStream query(SharedDataObjectEntity table, TableRequests.Query request) {
+  public ActionStream query(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Query request) {
     requireUrlAccess();
     QueryTableRequest query = request.body();
     DeltaSharingCapabilities capabilities = DeltaSharingCapabilities.parse(request.capabilities());
     String fileIdScheme = fileIdScheme(request.fileIdHash());
     if (query.startingVersion() != null) {
-      return changesFrom(table, query, capabilities, fileIdScheme);
+      return changesFrom(table, resolved, query, capabilities, fileIdScheme);
     }
 
     DeltaVersion at = DeltaVersion.from(query.version(), query.timestamp());
-    DeltaTable delta = tables.read(table, at, true);
+    DeltaTable delta = tables.read(table, resolved, at, true);
     DeltaResponseFormat format = capabilities.chooseFormat(delta.snapshot());
     return stream(
         responses.in(format).query(table, delta, !at.isLatest(), capabilities),
@@ -102,6 +106,7 @@ public class DeltaTableOperations implements TableOperations {
    */
   private ActionStream changesFrom(
       SharedDataObjectEntity table,
+      ResolvedAsset resolved,
       QueryTableRequest query,
       DeltaSharingCapabilities capabilities,
       String fileIdScheme) {
@@ -111,7 +116,7 @@ public class DeltaTableOperations implements TableOperations {
               + "what the table held at one, so they cannot be combined");
     }
     DeltaTableService.ChangeFeed feed =
-        tables.changesFrom(table, query.startingVersion(), query.endingVersion(), true);
+        tables.changesFrom(table, resolved, query.startingVersion(), query.endingVersion(), true);
     DeltaResponseFormat format = capabilities.chooseFormat(feed.table().snapshot());
     DeltaLines.History history =
         new DeltaLines.History(true, historicalProtocol(query.includeHistoricalProtocol(), format));
@@ -128,7 +133,8 @@ public class DeltaTableOperations implements TableOperations {
    * log's own business — an untracked window simply yields the added and removed files it can see.
    */
   @Override
-  public ActionStream changes(SharedDataObjectEntity table, TableRequests.Changes request) {
+  public ActionStream changes(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Changes request) {
     requireUrlAccess();
     DeltaSharingCapabilities capabilities = DeltaSharingCapabilities.parse(request.capabilities());
     String fileIdScheme = fileIdScheme(request.fileIdHash());
@@ -136,6 +142,7 @@ public class DeltaTableOperations implements TableOperations {
     DeltaTableService.ChangeFeed feed =
         tables.changes(
             table,
+            resolved,
             request.startingVersion(),
             DeltaVersion.parse(request.startingTimestamp()),
             request.endingVersion(),

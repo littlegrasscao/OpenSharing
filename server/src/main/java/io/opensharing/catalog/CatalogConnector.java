@@ -27,6 +27,11 @@ public interface CatalogConnector {
    * authorization can refuse. Called when an asset is added to a share and again when credentials are
    * vended, so a relocation is picked up rather than served from a stale snapshot.
    *
+   * <p>What comes back is described by {@link ResolvedAsset}, including which of its fields are kept
+   * against the shared object and which are only as current as this call. An implementation states
+   * what the catalog says and nothing more: a field the catalog does not report is left null or empty
+   * rather than guessed at, because a guess here is indistinguishable from an answer downstream.
+   *
    * <p>Either way the caller is a provider-side principal, and what to ask of them is whether they may
    * share the asset — not whether they own it. Databricks, whose model this follows, lets anyone with
    * {@code SELECT} on a table or view add it to a share, given {@code USE CATALOG} and {@code USE

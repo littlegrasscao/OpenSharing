@@ -1,6 +1,7 @@
 package io.opensharing.serving;
 
 import io.opensharing.asset.SharedDataObjectEntity;
+import io.opensharing.catalog.ResolvedAsset;
 import io.opensharing.catalog.TableFormat;
 import io.opensharing.http.ApiException;
 import java.util.EnumMap;
@@ -30,20 +31,26 @@ public class TableFormatRegistry {
   }
 
   /**
-   * @throws ApiException as not implemented when nothing serves the table's format, including when the
+   * Picks by the format the catalog states now, which the caller has just asked it for, rather than by
+   * the one recorded when the table was last read. The two differ when a table has been rewritten in
+   * another format since, and choosing by the record would send it to an implementation that would
+   * only have to refuse it — while a table converted <em>into</em> a format this serves would go on
+   * being refused for as long as the record said otherwise.
+   *
+   * @throws ApiException as not implemented when nothing serves that format, including when the
    *     catalog states no format at all — in either case the recipient can still read the bytes through
    *     dir access mode, which is what the message says
    */
-  public TableOperations forTable(SharedDataObjectEntity table) {
-    TableOperations operations = byFormat.get(table.getSourceFormat());
+  public TableOperations forTable(SharedDataObjectEntity table, ResolvedAsset resolved) {
+    TableOperations operations = byFormat.get(resolved.format());
     if (operations == null) {
       throw ApiException.notImplemented(
           "'"
               + table.getSharedAsName()
               + "' is "
-              + describe(table.getSourceFormat())
-              + ", which this server does not serve through the table read operations; call "
-              + "temporary-table-credentials and read its storage location directly");
+              + describe(resolved.format())
+              + " in the catalog, which this server does not serve through the table read "
+              + "operations; call temporary-table-credentials and read its storage location directly");
     }
     return operations;
   }

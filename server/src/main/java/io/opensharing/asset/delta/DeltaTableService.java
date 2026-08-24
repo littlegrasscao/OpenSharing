@@ -12,31 +12,29 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
- * Serves the Delta read operations from a shared object: re-resolves it in the catalog, gets
- * credentials for wherever it now lives, and reads its log.
+ * Serves the Delta read operations from a shared object: gets credentials for wherever it now lives,
+ * and reads its log.
  *
- * <p>Every call re-resolves rather than trusting the stored snapshot, for the same reason credential
- * vending does: a table that moved or that the server may no longer read must not be served from
- * stale state.
+ * <p>Each call is given the resolution the endpoint dispatched on, which is what a table that moved,
+ * changed format or may no longer be read is caught by — resolved per request rather than taken from
+ * the stored snapshot, and resolved once, before the choice of which format serves it.
  */
 @Service
 public class DeltaTableService {
 
-  private final AssetResolutionService resolution;
   private final CredentialVendingService credentials;
   private final DeltaLogReader reader;
 
-  public DeltaTableService(
-      AssetResolutionService resolution,
-      CredentialVendingService credentials,
-      DeltaLogReader reader) {
-    this.resolution = resolution;
+  public DeltaTableService(CredentialVendingService credentials, DeltaLogReader reader) {
     this.credentials = credentials;
     this.reader = reader;
   }
 
-  public DeltaTable read(SharedDataObjectEntity object, DeltaVersion at, boolean includeFiles) {
-    ResolvedAsset resolved = requireDelta(object);
+  public DeltaTable read(
+      SharedDataObjectEntity object,
+      ResolvedAsset resolved,
+      DeltaVersion at,
+      boolean includeFiles) {
     StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     return new DeltaTable(
         resolved, minted, reader.read(resolved.storageLocation(), minted, at, includeFiles));
@@ -55,6 +53,7 @@ public class DeltaTableService {
    */
   public ChangeFeed changes(
       SharedDataObjectEntity object,
+      ResolvedAsset resolved,
       Long startingVersion,
       Instant startingTimestamp,
       Long endingVersion,
@@ -68,7 +67,6 @@ public class DeltaTableService {
       throw ApiException.invalidParameter(
           "endingVersion and endingTimestamp are mutually exclusive");
     }
-    ResolvedAsset resolved = requireDelta(object);
     StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     String location = resolved.storageLocation();
 
@@ -96,10 +94,10 @@ public class DeltaTableService {
    */
   public ChangeFeed changesFrom(
       SharedDataObjectEntity object,
+      ResolvedAsset resolved,
       long startingVersion,
       Long endingVersion,
       boolean includeHistory) {
-    ResolvedAsset resolved = requireDelta(object);
     StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     String location = resolved.storageLocation();
     long end =
@@ -164,8 +162,8 @@ public class DeltaTableService {
    *
    * @param startingTimestamp when set, the earliest version at or after it, rather than the latest
    */
-  public long version(SharedDataObjectEntity object, Instant startingTimestamp) {
-    ResolvedAsset resolved = requireDelta(object);
+  public long version(
+      SharedDataObjectEntity object, ResolvedAsset resolved, Instant startingTimestamp) {
     StorageCredentials minted = credentials.mint(object, resolved, resolved.storageLocation());
     if (startingTimestamp != null) {
       return reader.earliestVersionAtOrAfter(
@@ -174,25 +172,4 @@ public class DeltaTableService {
     return reader.read(resolved.storageLocation(), minted, DeltaVersion.latest(), false).version();
   }
 
-  /**
-   * A second look at the format, after the endpoint has already routed here by the one recorded on the
-   * shared object. The two disagree only when the catalog has rewritten the table in another format
-   * since it was last resolved, which is rare but must not end in a Delta log being read from
-   * something that is no longer one.
-   */
-  private ResolvedAsset requireDelta(SharedDataObjectEntity object) {
-    ResolvedAsset resolved = resolution.resolveForServing(object);
-    if (resolved.format() != TableFormat.DELTA) {
-      throw ApiException.notImplemented(
-          "'"
-              + object.getSharedAsName()
-              + "' is "
-              + (resolved.format() == null
-                  ? "of no format the catalog states"
-                  : resolved.format().wireName())
-              + " in the catalog now, so it can no longer be read as Delta; call "
-              + "temporary-table-credentials and read its storage location directly");
-    }
-    return resolved;
-  }
 }

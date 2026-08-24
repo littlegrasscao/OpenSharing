@@ -250,7 +250,15 @@ Everything the spec defines for shares, schemas and tables is served, in both ac
 resolves the table and then asks whichever `TableOperations` implementation serves its format. A Delta
 table is answered in full; an Iceberg or bare-parquet table is answered `NOT_IMPLEMENTED` with the route
 that does work, since a recipient asking about a table they hold has asked a reasonable question — for
-an Iceberg table, in the wrong protocol. The rest of this section describes the Delta implementation of
+an Iceberg table, in the wrong protocol.
+
+Dispatch goes by the format the catalog states on that request, not by the one recorded when the table
+was last read, and that resolution travels into the implementation rather than being asked for twice.
+So a table converted after it was shared is served by whatever serves its new format, from the first
+read onwards: converted to Iceberg, it is pointed at the Iceberg catalog; converted from bare Parquet
+to Delta, it starts being served rather than staying refused by a record that had fallen behind.
+
+The rest of this section describes the Delta implementation of
 those four; the Iceberg catalog is below.
 
 These four are url access mode. They read the table's Delta log and answer in newline-delimited JSON,
@@ -650,9 +658,30 @@ public interface CatalogConnector {
 }
 ```
 
-`resolveAsset` answers where an asset lives, how it can be read, what subtype and format it is, and —
-for formats that need one — the `metadataLocation` a client uses to interpret the bytes, plus the
-`schema` if the catalog states one. It is called when an admin adds the object (so a share can never
+`resolveAsset` answers with everything the catalog knows about the asset:
+
+| Field | Purpose |
+|---|---|
+| `type` | Asset kind: a table or a schema. |
+| `identifier` | The catalog's canonical name, which every later resolution asks about. |
+| `catalogAssetId` | Durable catalog identity, where there is one, and what a catalog vending by id mints against. A share names an asset by name, so one recreated under the same name is served as the same object, with this changing underneath as the only trace. |
+| `storageLocation` | Where the bytes are: what a credential is scoped to, what a url is signed from, what a path is checked against. |
+| `metadataLocation` | Format-specific pointer needed to interpret those bytes, such as an Iceberg table's current metadata JSON. |
+| `format`, `subtype` | `delta`/`iceberg`/`parquet`, and the catalog's own refinement — `MANAGED`, `EXTERNAL`, `VIEW`, `MATERIALIZED_VIEW`, `STREAMING_TABLE`. |
+| `schema`, `partitionColumns` | The logical schema and the ordered partition columns, as the catalog reports them. What a recipient is told is the schema the format itself states — the Delta log, or an Iceberg metadata document — since that is the one the bytes were written under, so the catalog's copy is carried rather than served. |
+| `accessModes` | The modes the catalog can support: `dir` in practice, since whether credentials can be scoped to the location is its answer to give. `url` is the server's, and depends on what this build can sign. |
+| `auxiliaryLocations` | Other locations the catalog approves for the asset, which a credential may also cover — a table whose data spilled past its own prefix. |
+
+A shared object stores a snapshot of this, so listings come from the database rather than a catalog
+call per row. Every resolution rewrites the snapshot where the answer has moved on — relocation, a
+changed format or subtype, a different id — and the two answers that end it instead are the asset being
+gone and the owner no longer being allowed to read it, which withdraw the object so it stops being
+listed rather than failing every read. Three fields stay out of the snapshot: `metadataLocation`,
+because an Iceberg pointer moves with every commit and is used from the resolution in hand, and
+`schema` and `partitionColumns`, because the format states both and that is the copy a recipient is
+given.
+
+It is called when an admin adds the object (so a share can never
 point at something that does not exist) and again before every vend (so a relocated asset is never
 served from a stale snapshot). `caller` carries the name and credential of the provider-side principal
 the question is asked for: the admin making the request when an object is added, and the owner of the

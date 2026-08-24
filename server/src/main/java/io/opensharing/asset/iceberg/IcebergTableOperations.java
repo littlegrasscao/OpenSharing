@@ -1,6 +1,7 @@
 package io.opensharing.asset.iceberg;
 
 import io.opensharing.asset.SharedDataObjectEntity;
+import io.opensharing.catalog.ResolvedAsset;
 import io.opensharing.catalog.TableFormat;
 import io.opensharing.http.ApiException;
 import io.opensharing.serving.ActionStream;
@@ -29,22 +30,26 @@ public class IcebergTableOperations implements TableOperations {
   }
 
   @Override
-  public long version(SharedDataObjectEntity table, TableRequests.Version request) {
+  public long version(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Version request) {
     throw unserved(table, "a version");
   }
 
   @Override
-  public ActionStream metadata(SharedDataObjectEntity table, TableRequests.Metadata request) {
+  public ActionStream metadata(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Metadata request) {
     throw unserved(table, "metadata");
   }
 
   @Override
-  public ActionStream query(SharedDataObjectEntity table, TableRequests.Query request) {
+  public ActionStream query(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Query request) {
     throw unserved(table, "files");
   }
 
   @Override
-  public ActionStream changes(SharedDataObjectEntity table, TableRequests.Changes request) {
+  public ActionStream changes(
+      SharedDataObjectEntity table, ResolvedAsset resolved, TableRequests.Changes request) {
     throw unserved(table, "a change feed");
   }
 
