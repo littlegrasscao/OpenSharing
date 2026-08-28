@@ -2,29 +2,28 @@
 # End-to-end walkthrough of the OpenSharing reference server against a running instance.
 #
 #   1. terminal A:  cd server && mvn spring-boot:run -Dspring-boot.run.arguments="\
-#                     --opensharing.admin.bootstrap-token=demo-bootstrap-token \
+#                     --opensharing.admin.principals[0].name=alice@example.com \
+#                     --opensharing.admin.principals[0].bearer-token=dapi-alice-secret \
+#                     --opensharing.admin.principals[1].name=bob@example.com \
+#                     --opensharing.admin.principals[1].bearer-token=bob-secret \
 #                     --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
 #   2. terminal B:  ./scripts/demo.sh
 #
 # The encryption key is what a principal's token is sealed under so the catalog can be asked as them
-# later. Started without the key, the server cannot register a principal at all, so the first step
-# below fails rather than the reads further down.
+# later. The provider principal must be listed in principals before the server starts.
 #
 # Environment:
 #   SERVER            base URL of the server                (default http://localhost:8080)
-#   BOOTSTRAP_TOKEN   token that registers principals       (default demo-bootstrap-token)
 set -euo pipefail
 
 SERVER="${SERVER:-http://localhost:8080}"
-BOOTSTRAP_TOKEN="${BOOTSTRAP_TOKEN:-demo-bootstrap-token}"
 ADMIN="$SERVER/api/admin/v1"
-PROTOCOL="$SERVER/open-sharing"
+PROTOCOL="$SERVER/opensharing"
 
-ALICE="alice_$RANDOM@example.com"
-ALICE_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+ALICE="alice@example.com"
 # Alice's one secret: it authenticates her to this server, and this server to the catalog as her when
 # a recipient reads what she shared. In a real deployment it is her catalog token.
-ALICE_TOKEN="dapi-alice-secret-$RANDOM"
+ALICE_TOKEN="dapi-alice-secret"
 SHARE="demo_share_$RANDOM"
 RECIPIENT="demo_partner_$RANDOM"
 
@@ -42,21 +41,7 @@ admin() {
 
 step() { printf '\n\033[1;36m== %s\033[0m\n' "$1"; }
 
-step "Register the provider admin '$ALICE' with the bootstrap token"
-# The id is supplied here, as it would be to carry the one an external directory already uses.
-curl -sS -X POST "$ADMIN/principals" \
-  -H "Authorization: Bearer $BOOTSTRAP_TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"type\":\"USER\",\"id\":\"$ALICE_ID\",\"name\":\"$ALICE\",\"bearer_token\":\"$ALICE_TOKEN\"}" \
-  | jq .
-
-step "Registering is all the bootstrap token may do"
-curl -sS -X POST "$ADMIN/shares" \
-  -H "Authorization: Bearer $BOOTSTRAP_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"nobodys_share"}' | jq .
-
-step "And it is the only token that may do it: Alice cannot register a principal"
-admin POST /principals \
-  '{"name":"mallory@example.com","bearer_token":"mallory-secret"}' | jq .
+step "The provider '$ALICE' was provisioned from server configuration at startup"
 
 step "Alice creates share '$SHARE'"
 admin POST /shares \
@@ -86,12 +71,9 @@ admin PATCH "/shares/$SHARE/permissions" \
   "{\"changes\":[{\"recipient_name\":\"$RECIPIENT\",\"add\":[\"SELECT\"]}]}" \
   | jq '.items[] | {share_name,recipient_name,privilege,granted_at,granted_by}'
 
-step "Another admin can see Alice's share, but only she may change it"
-BOB="bob_$RANDOM@example.com"
-BOB_TOKEN="bob-secret-$RANDOM"
-curl -sS -X POST "$ADMIN/principals" \
-  -H "Authorization: Bearer $BOOTSTRAP_TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"type\":\"USER\",\"name\":\"$BOB\",\"bearer_token\":\"$BOB_TOKEN\"}" > /dev/null
+step "Another provisioned admin can see Alice's share, but only she may change it"
+BOB="bob@example.com"
+BOB_TOKEN="bob-secret"
 curl -sS "$ADMIN/shares/$SHARE" -H "Authorization: Bearer $BOB_TOKEN" | jq '{name,owner_id}'
 curl -sS -X DELETE "$ADMIN/shares/$SHARE" -H "Authorization: Bearer $BOB_TOKEN" | jq .
 curl -sS -X POST "$ADMIN/recipients/$RECIPIENT/rotate-token" \

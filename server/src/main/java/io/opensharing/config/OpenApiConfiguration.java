@@ -72,7 +72,7 @@ public class OpenApiConfiguration {
                 .addSecuritySchemes(RECIPIENT_TOKEN, bearer("A recipient's token."))
                 .addSecuritySchemes(
                     PRINCIPAL_TOKEN,
-                    bearer("A provider principal's token, or the bootstrap token.")));
+                    bearer("A provider principal's token from the configured allowlist.")));
   }
 
   /** The protocol a recipient calls, mounted wherever {@code protocol-prefix} points. */

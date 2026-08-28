@@ -64,7 +64,7 @@ recipient-facing protocol is the one exception, and has a package of its own.
 
 | Package | What it holds |
 |---|---|
-| `principal` | `PrincipalEntity` and `PrincipalStore`, the `/principals` endpoints, and `Caller` — the identity the admin filter resolves and controllers ask for when a write needs an owner. |
+| `principal` | `PrincipalEntity`, `PrincipalStore`, and `Caller` — the identity the admin filter resolves and controllers ask for when a write needs an owner. Principals are provisioned from configuration at startup, not through an admin API. |
 | `share` | `ShareEntity`, `SharePermissionEntity` and `SharePrivilege`, `ShareStore`, the provider-admin share and permission endpoints, `ShareAccessService` (may this recipient read this share?) and `ShareMapper`. |
 | `asset` | Everything about a shared asset that does not depend on its format: `SharedDataObjectEntity` and its status, `SharedDataObjectStore` and `SharedDataObjectService`, `SharedAliases` (the alias rules), `SharedTableService` (which tables a share holds, expanding a shared schema), `AssetResolutionService` (the server's use of the catalog trait, and so where the access modes an object offers are decided), `CredentialVendingService` and `TableMapper`. `asset.storage` holds reaching the storage a table lives in, whatever its format: the `UrlSigner` per scheme, the `StorageReader` that fetches a file the server itself has to look at, `StoragePaths` (whether a path is one of a shared table's own — asked by every format, so answered once), and `HadoopStorage`, which is how a read that goes through Hadoop gets the catalog's credentials and the path spelling a driver wants, `VendedGcsToken` included. Then one subpackage per format: `asset.delta` is url access mode — `DeltaLogReader` over Delta Kernel, `DeltaSharingCapabilities` (which response format a request settles on, and how much of the table's protocol the client is told) and a `DeltaLines` writer per format — and `asset.iceberg` is the Iceberg catalog's `loadTable`, plus the refusal that sends the Delta read operations there. |
 | `serving` | The recipient-facing protocol: `RecipientApi` (every route it serves), the share, schema and table discovery endpoints, credential vending, the four table read operations, the Iceberg REST catalog with the error shape its clients read, and the `TableOperations` seam those read operations dispatch across. |
@@ -115,9 +115,9 @@ inside it. Those two cascades are the only cross-package writes.
   principal, so an admin can see what a colleague shares; every write goes through `requireOwned` and is
   refused with `PERMISSION_DENIED` for anyone else. `Ownership` states the rule once, which is where
   group membership will widen it — until then a `GROUP` owns only in its own right.
-- **Creating administrators is separated from being one.** The bootstrap token may only register
-  principals, and only it may: neither credential can do the other's job, so a stolen admin token
-  cannot mint itself accomplices, and a stolen bootstrap token cannot read or change any data.
+- **Provider principals come from configuration.** `opensharing.admin.principals` lists the
+  usernames and bearer tokens the server recognizes. Each is registered in the database at startup;
+  rotating a credential means changing the configuration and restarting.
 - **The catalog is asked as a provider, never as a recipient.** Adding an object is asked as the admin
   making the request, whose token is in hand while it is in flight. Serving — both re-resolving the
   table and minting the credentials that open it — is asked as the owner of
@@ -196,19 +196,19 @@ Requirements: Java 21 and Maven.
 cd server
 mvn install
 mvn spring-boot:run -Dspring-boot.run.arguments="\
-  --opensharing.admin.bootstrap-token=demo-bootstrap-token \
+  --opensharing.admin.principals[0].name=alice@example.com \
+  --opensharing.admin.principals[0].bearer-token=dapi-alice-secret \
   --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
 ```
 
 The server listens on `http://localhost:8080` with an H2 file database under `server/data/` and the
 sample catalog in `src/main/resources/local-catalog.yml`. Configure
-`opensharing.admin.bootstrap-token`; with none set a random one is generated and logged at startup, so
-it changes on every restart. That token registers principals and does nothing else, and it is the only
-credential that may — every other admin call authenticates as a principal.
+Configure `opensharing.admin.principals` with at least one username and bearer token; each
+entry is registered in the database at startup. With none configured, every admin call is rejected.
 
 `security.credential-encryption-key` is what a principal's token is sealed under so the catalog can be
-asked as them while serving a recipient. It is required to register anyone, so a server started without
-it cannot be set up at all. The key above is a throwaway for local use; a real deployment keeps one
+asked as them while serving a recipient. It is required to provision anyone, so a server started without
+it cannot authenticate a provider at all. The key above is a throwaway for local use; a real deployment keeps one
 somewhere a database dump does not reach.
 
 Then walk through the whole provider-to-recipient flow (requires `jq`):
@@ -221,7 +221,7 @@ Then walk through the whole provider-to-recipient flow (requires `jq`):
 
 ### Protocol endpoints (recipient, `Authorization: Bearer <token>`)
 
-Mounted under `opensharing.protocol-prefix`, default `/open-sharing`. Every route below is declared in
+Mounted under `opensharing.protocol-prefix`, default `/opensharing`. Every route below is declared in
 `RecipientApi` and served from the `serving` package.
 
 ```
@@ -374,11 +374,6 @@ principal may read; a `PATCH`, `DELETE` or `rotate-token` on a share or a recipi
 the caller owns it.
 
 ```
-POST   /principals                                  register a principal (bootstrap token only)
-GET    /principals                                  list principals
-GET    /principals/{name}                           get a principal
-PATCH  /principals/{name}                           rename it or replace its bearer token
-DELETE /principals/{name}                           delete it, if it owns nothing
 POST   /shares                                      create a share
 GET    /shares                                      list shares
 GET    /shares/{name}                               get a share with its objects
@@ -395,39 +390,31 @@ POST   /recipients/{name}/rotate-token              replace the token, returns a
 GET    /recipients/{name}/share-permissions         list the shares granted to the recipient
 ```
 
-**Registering a principal** is what the bootstrap administrator token is for, and the two directions of
-that are both enforced: it is the only call the bootstrap token may make, and it is the only credential
-that may make the call. A registered principal asking to register another is answered
-`403 PERMISSION_DENIED`, so creating administrators stays an operator action rather than something an
-admin credential can do on its own. Everything else needs a principal's own token, because everything
-else records who did it:
+**Provider principals** are not managed through this API. List them in configuration and restart to
+add or rotate one:
 
-```bash
-curl -X POST "$ADMIN/principals" \
-  -H "Authorization: Bearer $BOOTSTRAP_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"type":"USER","id":"941a703c-ff3c-4d6f-8fb8-0e5aca154ed4",
-       "name":"alice@example.com","bearer_token":"dapi-alices-catalog-token"}'
+```yaml
+opensharing:
+  admin:
+    principals:
+      - name: alice@example.com
+        bearer-token: dapi-alices-catalog-token
+      - name: bob@example.com
+        bearer-token: dapi-bobs-catalog-token
 ```
 
-`bearer_token` is the principal's catalog credential, and this server accepts it as their login too.
+`bearer-token` is the principal's catalog credential, and this server accepts it as their login too.
 One secret, because the server has to ask the catalog as whoever shared an asset, and a second secret
 would only ever have to be kept identical to this one to behave; whoever holds it can already act as
 them against the catalog that decides everything here anyway. It is never stored in the clear,
-returned or logged — not even on the response to the call that supplied it — but it is stored twice:
+returned or logged, but it is stored twice:
 hashed, to recognize it when they present it, and sealed under
 `security.credential-encryption-key`, to present it to the catalog on a recipient's behalf long after
-their own request ended. `PATCH`ing a new token replaces both, which is also how a principal is brought
-back after the key changes. A token of up to 2048 characters is accepted, which holds the JWT a catalog
+their own request ended. A token of up to 2048 characters is accepted, which holds the JWT a catalog
 is apt to issue; a longer one is refused in those terms rather than left to fail as a storage conflict.
+Rotating a credential means updating the allowlist and restarting the server.
 
-`id` may be given so a principal keeps the id an
-external directory already uses; it must be a UUID and one that is free, and leaving it out has the
-server generate one. This is the only object whose id a caller chooses — a share's and a recipient's
-are the server's to assign, as the spec has them.
-
-Deleting a principal is refused while anything it owns, authored or granted still exists, and the
-refusal counts what is holding it, because an audit trail naming nobody is worse than one naming
-someone who has left.
+Every other admin call authenticates as one of those principals, because everything records who did it:
 
 **Adding a table** names the source in the catalog and, optionally, the alias recipients will see:
 
@@ -546,14 +533,14 @@ holds is described under the protocol endpoints above.
 Everything lives under the `opensharing` prefix in `src/main/resources/application.yml`. Any key can be
 overridden without editing the file, either as `--opensharing.admin.base-path=/admin` on the command
 line or as the upper-case underscored form of the same path in the environment, so
-`opensharing.admin.bootstrap-token` is `OPENSHARING_ADMIN_BOOTSTRAP_TOKEN`.
+`opensharing.admin.principals` is `OPENSHARING_ADMIN_PRINCIPALS_0_NAME` and `OPENSHARING_ADMIN_PRINCIPALS_0_BEARER_TOKEN` for indexed entries.
 
 | Key | Default | Purpose |
 |---|---|---|
-| `protocol-prefix` | `/open-sharing` | Prefix for protocol endpoints; also what goes in the profile file. |
+| `protocol-prefix` | `/opensharing` | Prefix for protocol endpoints; also what goes in the profile file. |
 | `admin.base-path` | `/api/admin/v1` | Prefix for the provider-admin API. |
-| `admin.bootstrap-token` | generated | The only credential that may `POST /principals`, and its only privilege. Set it; a generated one changes each restart. |
-| `security.credential-encryption-key` | blank | Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the catalog can be asked as them later. Required: blank means no principal can be registered. Keep it out of the database's reach: an environment variable, a mounted secret, a KMS. |
+| `admin.principals` | `[]` | Usernames and bearer tokens provisioned at startup. Each token is both the admin login and the catalog credential. |
+| `security.credential-encryption-key` | blank | Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the catalog can be asked as them later. Required: blank means no principal can be provisioned. Keep it out of the database's reach: an environment variable, a mounted secret, a KMS. |
 | `activation.base-path` | `/activation` | Prefix the single-use activation endpoint is served under. |
 | `activation.external-base-url` | `http://localhost:8080` | Public base URL used to build activation URLs and the profile endpoint. |
 | `activation.ttl` | `72h` | How long an unused activation link stays valid. |
@@ -896,14 +883,14 @@ mvn test
 
 The server tests boot the whole application against an in-memory database and the file-backed catalog,
 then drive it exactly as a provider admin and a recipient client would, following the flow above:
-register Alice with the bootstrap token, create a share as her, add tables under aliases, create a
+provision Alice from configuration, create a share as her, add tables under aliases, create a
 recipient, grant `SELECT`, activate the token minted with the recipient, discover the tables, vend
 credentials, and rotate the token with and without a grace window. Sharing a schema gets the same
 treatment, from the other end: nothing is added under a name, and the recipient still lists the tables,
 pages through them, and vends credentials for one — plus the cases only a grant has, an alias claimed
 twice, a table the schema does not hold, and a table shared in its own right winning over the schema's.
 They also confirm what must be
-refused: the bootstrap token creating anything it cannot own, a principal who may not share a table, a
+refused: a principal who may not share a table, a
 principal writing to a share or a recipient it does not own, a principal who still owns something being
 deleted, duplicate names in either case, an unsupported object
 type, a source the catalog does not know, missing, invalid, superseded and expired tokens, a stale

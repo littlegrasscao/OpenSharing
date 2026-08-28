@@ -22,18 +22,14 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * The provider-admin API: principals, shares and their contents, recipients, permissions, and the
- * recipient token lifecycle.
+ * The provider-admin API: shares and their contents, recipients, permissions, and the recipient token
+ * lifecycle.
  */
 class ProviderAdminApiTest extends ServerTestBase {
-
-  @Autowired private JdbcTemplate jdbc;
 
   @Test
   void requiresAPrincipalsToken() throws Exception {
@@ -50,43 +46,17 @@ class ProviderAdminApiTest extends ServerTestBase {
    * by, and a sealed copy to ask the catalog with. Neither is readable in the database or the API.
    */
   @Test
-  void keepsAPrincipalsTokenHashedToRecognizeAndSealedToReplay() throws Exception {
-    String name = unique("dana") + "@example.com";
-    String token = "dapi-dana-secret";
-    JsonNode created =
-        readJson(
-            mvc.perform(
-                    bootstrap(post(ADMIN_BASE + "/principals"))
-                        .content(
-                            "{\"name\":\"" + name + "\",\"bearer_token\":\"" + token + "\"}"))
-                .andExpect(status().isCreated())
-                .andReturn());
-
-    assertTrue(created.path("bearer_token").isMissingNode(), "never echoed back");
-    assertTrue(
-        adminGet("/principals/" + name).path("bearer_token").isMissingNode(), "nor handed out later");
-
-    String sealed = storedCatalogCredential(name);
+  void keepsAProvisionedPrincipalsTokenHashedToRecognizeAndSealedToReplay() throws Exception {
+    String sealed = storedCatalogCredential(ALICE);
     assertTrue(sealed.startsWith("v1."), "the stored form says what it is: " + sealed);
-    assertFalse(sealed.contains(token), "the secret itself is not in the database");
-    assertFalse(storedTokenHash(name).contains(token), "nor in the column used to recognize it");
+    assertFalse(sealed.contains(ALICE_TOKEN), "the secret itself is not in the database");
+    assertFalse(storedTokenHash(ALICE).contains(ALICE_TOKEN), "nor in the column used to recognize it");
 
-    // What is sealed has to be the token itself, since it is presented to the catalog as her later.
-    // Sealing the hash instead, or the previous token on a rotation, would satisfy everything above.
-    String id = storedColumn("id", name);
+    String id = principalId(ALICE);
     assertEquals(
-        token, cipher().decrypt(sealed, id), "and what comes back out is what she registered");
-    // Sealed to her row, so it cannot be moved to another principal and read as theirs.
+        ALICE_TOKEN, cipher().decrypt(sealed, id), "and what comes back out is what was configured");
     assertThrows(
         Exception.class, () -> cipher().decrypt(sealed, UUID.randomUUID().toString()));
-
-    // Replacing the token replaces both, which is what re-seals a principal after a key change.
-    mvc.perform(
-            adminJson(patch(ADMIN_BASE + "/principals/" + name))
-                .content("{\"bearer_token\":\"dapi-dana-rotated\"}"))
-        .andExpect(status().isOk());
-    assertNotEquals(sealed, storedCatalogCredential(name));
-    assertEquals("dapi-dana-rotated", cipher().decrypt(storedCatalogCredential(name), id));
   }
 
   /** Reads the stored form the way the server does, with the key the tests run under. */
@@ -94,25 +64,6 @@ class ProviderAdminApiTest extends ServerTestBase {
     OpenSharingProperties properties = new OpenSharingProperties();
     properties.getSecurity().setCredentialEncryptionKey(CREDENTIAL_KEY);
     return new SecretCipher(properties);
-  }
-
-  /**
-   * A token longer than what can be stored is refused in those terms. Left to the insert it would
-   * come back as a conflict, telling an administrator the principal already exists.
-   */
-  @Test
-  void refusesATokenTooLongToStore() throws Exception {
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/principals"))
-                .content(
-                    "{\"name\":\""
-                        + unique("eve")
-                        + "@example.com\",\"bearer_token\":\""
-                        + "x".repeat(2049)
-                        + "\"}"))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.errorCode").value("INVALID_PARAMETER_VALUE"))
-        .andExpect(jsonPath("$.message").value(containsString("at most 2048")));
   }
 
   private String storedCatalogCredential(String principal) {
@@ -131,142 +82,8 @@ class ProviderAdminApiTest extends ServerTestBase {
   }
 
   @Test
-  void letsTheBootstrapTokenRegisterPrincipalsAndNothingElse() throws Exception {
-    String name = unique("bob") + "@example.com";
-    JsonNode created =
-        readJson(
-            mvc.perform(
-                    bootstrap(post(ADMIN_BASE + "/principals"))
-                        .content(
-                            "{\"type\":\"USER\",\"name\":\""
-                                + name
-                                + "\",\"bearer_token\":\"bob-secret\"}"))
-                .andExpect(status().isCreated())
-                .andReturn());
-
-    assertEquals("USER", created.get("type").asText());
-    assertTrue(
-        created.path("bearer_token").isMissingNode(), "the token must never be echoed back");
-    assertEquals(name, adminGet("/principals/" + name.toUpperCase()).get("name").asText());
-
-    // Registration is all it may do: it cannot create, read or delete anything else.
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/shares")).content("{\"name\":\"" + unique("s") + "\"}"))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.errorCode").value("PERMISSION_DENIED"))
-        .andExpect(jsonPath("$.message").value(containsString("may only POST")));
-    mvc.perform(bootstrap(get(ADMIN_BASE + "/shares"))).andExpect(status().isForbidden());
-    mvc.perform(bootstrap(get(ADMIN_BASE + "/principals"))).andExpect(status().isForbidden());
-    mvc.perform(bootstrap(delete(ADMIN_BASE + "/principals/" + name)))
-        .andExpect(status().isForbidden());
-  }
-
-  @Test
-  void reservesPrincipalRegistrationToTheBootstrapToken() throws Exception {
-    // Alice is a registered principal, and registering principals is not among her privileges.
-    mvc.perform(
-            adminJson(post(ADMIN_BASE + "/principals"))
-                .content(
-                    "{\"name\":\""
-                        + unique("ivan")
-                        + "@example.com\",\"bearer_token\":\"ivan-secret\"}"))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.errorCode").value("PERMISSION_DENIED"))
-        .andExpect(
-            jsonPath("$.message").value(containsString("only the bootstrap administrator token")));
-
-    // An unknown token is still an authentication failure, not a permission one.
-    mvc.perform(
-            post(ADMIN_BASE + "/principals")
-                .header("Authorization", "Bearer not-a-token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"jane@example.com\",\"bearer_token\":\"jane-secret\"}"))
-        .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.errorCode").value("UNAUTHENTICATED"));
-  }
-
-  @Test
-  void registersAPrincipalUnderTheIdTheCallerChose() throws Exception {
-    String id = UUID.randomUUID().toString();
-    String name = unique("frank") + "@example.com";
-
-    JsonNode created =
-        readJson(
-            mvc.perform(
-                    bootstrap(post(ADMIN_BASE + "/principals"))
-                        .content(
-                            "{\"id\":\""
-                                + id
-                                + "\",\"name\":\""
-                                + name
-                                + "\",\"bearer_token\":\"frank-secret\"}"))
-                .andExpect(status().isCreated())
-                .andReturn());
-
-    assertEquals(id, created.get("id").asText());
-    // The id is what everything the principal creates points at.
-    mvc.perform(
-            post(ADMIN_BASE + "/shares")
-                .header("Authorization", "Bearer frank-secret")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"" + unique("franks_share") + "\"}"))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.owner_id").value(id));
-  }
-
-  @Test
-  void refusesAnIdThatIsNotAUuidOrIsAlreadyRegistered() throws Exception {
-    String taken = adminGet("/principals/" + ALICE).get("id").asText();
-
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/principals"))
-                .content(
-                    "{\"id\":\"not-a-uuid\",\"name\":\""
-                        + unique("gina")
-                        + "@example.com\",\"bearer_token\":\"gina-secret\"}"))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.message").value(containsString("is not a UUID")));
-
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/principals"))
-                .content(
-                    "{\"id\":\""
-                        + taken
-                        + "\",\"name\":\""
-                        + unique("hugo")
-                        + "@example.com\",\"bearer_token\":\"hugo-secret\"}"))
-        .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.errorCode").value("RESOURCE_ALREADY_EXISTS"));
-
-    // Alice is untouched: the rejected registration must not have replaced her token.
-    assertEquals(ALICE, adminGet("/principals/" + ALICE).get("name").asText());
-  }
-
-  @Test
-  void replacingAPrincipalsTokenInvalidatesTheOldOne() throws Exception {
-    String name = unique("carol") + "@example.com";
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/principals"))
-                .content(
-                    "{\"name\":\"" + name + "\",\"bearer_token\":\"carol-first\"}"))
-        .andExpect(status().isCreated());
-
-    mvc.perform(
-            patch(ADMIN_BASE + "/principals/" + name)
-                .header("Authorization", "Bearer carol-first")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"bearer_token\":\"carol-second\"}"))
-        .andExpect(status().isOk());
-
-    mvc.perform(get(ADMIN_BASE + "/shares").header("Authorization", "Bearer carol-first"))
-        .andExpect(status().isUnauthorized());
-    mvc.perform(get(ADMIN_BASE + "/shares").header("Authorization", "Bearer carol-second"))
-        .andExpect(status().isOk());
-  }
-
-  @Test
   void createsAShareOwnedByItsCreator() throws Exception {
-    String alice = adminGet("/principals/" + ALICE).get("id").asText();
+    String alice = principalId(ALICE);
     String share = createShare(unique("vaccine_share"));
 
     JsonNode read = adminGet("/shares/" + share);
@@ -316,7 +133,7 @@ class ProviderAdminApiTest extends ServerTestBase {
 
   @Test
   void addingATableCapturesWhatTheCatalogReports() throws Exception {
-    String alice = adminGet("/principals/" + ALICE).get("id").asText();
+    String alice = principalId(ALICE);
     String share = createShare(unique("sales_share"));
 
     JsonNode object = addTable(share, "sales.orders", "main.sales.orders");
@@ -409,41 +226,6 @@ class ProviderAdminApiTest extends ServerTestBase {
     assertEquals("test share", read.get("comment").asText());
   }
 
-  @Test
-  void refusesToDeleteAPrincipalThatStillOwnsSomething() throws Exception {
-    String name = unique("dave") + "@example.com";
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/principals"))
-                .content("{\"name\":\"" + name + "\",\"bearer_token\":\"dave-secret\"}"))
-        .andExpect(status().isCreated());
-
-    mvc.perform(
-            post(ADMIN_BASE + "/shares")
-                .header("Authorization", "Bearer dave-secret")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"" + unique("daves_share") + "\"}"))
-        .andExpect(status().isCreated());
-
-    mvc.perform(adminJson(delete(ADMIN_BASE + "/principals/" + name)))
-        .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.errorCode").value("RESOURCE_CONFLICT"))
-        .andExpect(jsonPath("$.message").value(containsString("1 share")));
-  }
-
-  @Test
-  void deletesAPrincipalThatOwnsNothing() throws Exception {
-    String name = unique("erin") + "@example.com";
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/principals"))
-                .content("{\"name\":\"" + name + "\",\"bearer_token\":\"erin-secret\"}"))
-        .andExpect(status().isCreated());
-
-    mvc.perform(adminJson(delete(ADMIN_BASE + "/principals/" + name)))
-        .andExpect(status().isNoContent());
-
-    mvc.perform(get(ADMIN_BASE + "/shares").header("Authorization", "Bearer erin-secret"))
-        .andExpect(status().isUnauthorized());
-  }
 
   @Test
   void refusesTablesThatDoNotExistInTheCatalog() throws Exception {
@@ -569,9 +351,9 @@ class ProviderAdminApiTest extends ServerTestBase {
     JsonNode profile =
         readJson(mvc.perform(get("/activation/" + nonce)).andExpect(status().isOk()).andReturn());
     assertEquals(1, profile.get("shareCredentialsVersion").asInt());
-    assertEquals("https://sharing.example.com/open-sharing", profile.get("endpoint").asText());
+    assertEquals("https://sharing.example.com/opensharing", profile.get("endpoint").asText());
     assertEquals(
-        "https://sharing.example.com/open-sharing/iceberg", profile.get("icebergEndpoint").asText());
+        "https://sharing.example.com/opensharing/iceberg", profile.get("icebergEndpoint").asText());
     assertTrue(profile.get("bearerToken").asText().startsWith("os_"));
     assertNotNull(profile.get("expirationTime").asText());
 
@@ -661,7 +443,7 @@ class ProviderAdminApiTest extends ServerTestBase {
 
   @Test
   void grantsAndRevokesShareAccess() throws Exception {
-    String alice = adminGet("/principals/" + ALICE).get("id").asText();
+    String alice = principalId(ALICE);
     String share = createShare(unique("granted_share"));
     String recipient = createRecipient(unique("partner"));
 
@@ -739,21 +521,17 @@ class ProviderAdminApiTest extends ServerTestBase {
     String share = createShare(unique("alices_share"));
     String recipient = createRecipient(unique("alices_partner"));
 
-    String mallory = unique("mallory") + "@example.com";
-    mvc.perform(
-            bootstrap(post(ADMIN_BASE + "/principals"))
-                .content("{\"name\":\"" + mallory + "\",\"bearer_token\":\"mallory-secret\"}"))
-        .andExpect(status().isCreated());
+    String mallory = MALLORY;
 
     // Reading is open to any principal.
-    mvc.perform(as("mallory-secret", get(ADMIN_BASE + "/shares/" + share)))
+    mvc.perform(as(MALLORY_TOKEN, get(ADMIN_BASE + "/shares/" + share)))
         .andExpect(status().isOk());
-    mvc.perform(as("mallory-secret", get(ADMIN_BASE + "/recipients/" + recipient)))
+    mvc.perform(as(MALLORY_TOKEN, get(ADMIN_BASE + "/recipients/" + recipient)))
         .andExpect(status().isOk());
 
     // Writing is not.
     mvc.perform(
-            as("mallory-secret", patch(ADMIN_BASE + "/shares/" + share))
+            as(MALLORY_TOKEN, patch(ADMIN_BASE + "/shares/" + share))
                 .content(
                     "{\"updates\":[{\"action\":\"ADD\",\"data_object\":"
                         + "{\"name\":\"main.sales.orders\",\"shared_as\":\"sales.orders\"}}]}"))
@@ -761,24 +539,24 @@ class ProviderAdminApiTest extends ServerTestBase {
         .andExpect(jsonPath("$.errorCode").value("PERMISSION_DENIED"))
         .andExpect(jsonPath("$.message").value(containsString("does not own share")));
     mvc.perform(
-            as("mallory-secret", patch(ADMIN_BASE + "/shares/" + share + "/permissions"))
+            as(MALLORY_TOKEN, patch(ADMIN_BASE + "/shares/" + share + "/permissions"))
                 .content(
                     "{\"changes\":[{\"recipient_name\":\""
                         + recipient
                         + "\",\"add\":[\"SELECT\"]}]}"))
         .andExpect(status().isForbidden());
-    mvc.perform(as("mallory-secret", delete(ADMIN_BASE + "/shares/" + share)))
+    mvc.perform(as(MALLORY_TOKEN, delete(ADMIN_BASE + "/shares/" + share)))
         .andExpect(status().isForbidden());
     mvc.perform(
-            as("mallory-secret", patch(ADMIN_BASE + "/recipients/" + recipient))
+            as(MALLORY_TOKEN, patch(ADMIN_BASE + "/recipients/" + recipient))
                 .content("{\"ip_access_list\":[\"10.0.0.0/8\"]}"))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value(containsString("does not own recipient")));
     mvc.perform(
-            as("mallory-secret", post(ADMIN_BASE + "/recipients/" + recipient + "/rotate-token"))
+            as(MALLORY_TOKEN, post(ADMIN_BASE + "/recipients/" + recipient + "/rotate-token"))
                 .content("{}"))
         .andExpect(status().isForbidden());
-    mvc.perform(as("mallory-secret", delete(ADMIN_BASE + "/recipients/" + recipient)))
+    mvc.perform(as(MALLORY_TOKEN, delete(ADMIN_BASE + "/recipients/" + recipient)))
         .andExpect(status().isForbidden());
 
     // Alice owns both, so nothing above applies to her.
@@ -799,12 +577,6 @@ class ProviderAdminApiTest extends ServerTestBase {
       String bearerToken, MockHttpServletRequestBuilder request) {
     return request
         .header("Authorization", "Bearer " + bearerToken)
-        .contentType(MediaType.APPLICATION_JSON);
-  }
-
-  private MockHttpServletRequestBuilder bootstrap(MockHttpServletRequestBuilder request) {
-    return request
-        .header("Authorization", "Bearer " + BOOTSTRAP_TOKEN)
         .contentType(MediaType.APPLICATION_JSON);
   }
 }

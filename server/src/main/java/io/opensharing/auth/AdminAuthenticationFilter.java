@@ -17,31 +17,18 @@ import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Authenticates a provider-admin request and decides which of the two credentials may make it.
+ * Authenticates a provider-admin request as a configured principal.
  *
- * <p>Registering a principal is the bootstrap administrator token's only privilege, and its exclusive
- * one: a principal cannot register another principal, and the bootstrap token cannot touch anything
- * else. Bootstrapping is therefore a step an operator takes once, holding a token that would be
- * useless to steal for any other purpose.
- *
- * <p>Every other request resolves to a {@link Caller}, so downstream code can record who owns and who
- * authored what the request creates.
+ * <p>Principals are provisioned from {@code opensharing.admin.principals} at startup rather than
+ * than through an admin API, so every request here must present one of those bearer tokens.
  */
 public class AdminAuthenticationFilter extends OncePerRequestFilter {
 
   private final PrincipalStore principals;
-  private final String bootstrapToken;
-  private final String registrationPath;
   private final ObjectMapper objectMapper;
 
-  public AdminAuthenticationFilter(
-      PrincipalStore principals,
-      String bootstrapToken,
-      String adminBasePath,
-      ObjectMapper objectMapper) {
+  public AdminAuthenticationFilter(PrincipalStore principals, ObjectMapper objectMapper) {
     this.principals = principals;
-    this.bootstrapToken = bootstrapToken;
-    this.registrationPath = trimTrailingSlash(adminBasePath) + "/principals";
     this.objectMapper = objectMapper;
   }
 
@@ -54,57 +41,20 @@ public class AdminAuthenticationFilter extends OncePerRequestFilter {
       reject(response, "a provider-admin bearer token is required");
       return;
     }
-    String token = presented.get();
-    boolean registration = isPrincipalRegistration(request);
-
-    if (Secrets.constantTimeEquals(token, bootstrapToken)) {
-      if (!registration) {
-        forbid(
-            response,
-            "the bootstrap administrator token may only POST "
-                + registrationPath
-                + "; register a principal and authenticate as it instead");
-        return;
-      }
-      chain.doFilter(request, response);
-      return;
-    }
-
-    Optional<PrincipalEntity> principal = principals.findByToken(token);
+    Optional<PrincipalEntity> principal = principals.findByToken(presented.get());
     if (principal.isEmpty()) {
       reject(response, "the bearer token does not belong to a known principal");
       return;
     }
-    if (registration) {
-      forbid(response, "only the bootstrap administrator token may register principals");
-      return;
-    }
-    request.setAttribute(Caller.REQUEST_ATTRIBUTE, Caller.of(principal.get(), token));
+    request.setAttribute(Caller.REQUEST_ATTRIBUTE, Caller.of(principal.get(), presented.get()));
     chain.doFilter(request, response);
-  }
-
-  private boolean isPrincipalRegistration(HttpServletRequest request) {
-    return "POST".equalsIgnoreCase(request.getMethod())
-        && registrationPath.equals(trimTrailingSlash(request.getRequestURI()));
   }
 
   private void reject(HttpServletResponse response, String message) throws IOException {
     response.setHeader("WWW-Authenticate", "Bearer");
-    body(response, HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHENTICATED, message);
-  }
-
-  private void forbid(HttpServletResponse response, String message) throws IOException {
-    body(response, HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, message);
-  }
-
-  private void body(HttpServletResponse response, HttpStatus status, String code, String message)
-      throws IOException {
-    response.setStatus(status.value());
+    response.setStatus(HttpStatus.UNAUTHORIZED.value());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-    objectMapper.writeValue(response.getOutputStream(), new ErrorResponse(code, message));
-  }
-
-  private static String trimTrailingSlash(String path) {
-    return path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
+    objectMapper.writeValue(
+        response.getOutputStream(), new ErrorResponse(ErrorCodes.UNAUTHENTICATED, message));
   }
 }

@@ -1,6 +1,5 @@
 package io.opensharing;
 
-import static org.hamcrest.Matchers.oneOf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,39 +8,42 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import org.junit.jupiter.api.BeforeEach;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * Boots the whole server against an in-memory database and the file-backed catalog, registers the
- * principal the tests act as, and offers the provider-admin calls they need to set up a share.
+ * Boots the whole server against an in-memory database and the file-backed catalog, with provider
+ * principals provisioned from the configured allowlist, and offers the admin calls tests need to set
+ * up a share.
  */
 @SpringBootTest(
     properties = {
       "spring.datasource.url=jdbc:h2:mem:opensharing;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
       "spring.jpa.hibernate.ddl-auto=create-drop",
-      "opensharing.admin.bootstrap-token=" + ServerTestBase.BOOTSTRAP_TOKEN,
       "opensharing.catalog.type=local",
       "opensharing.catalog.local.file=classpath:test-catalog.yml",
       "opensharing.activation.external-base-url=https://sharing.example.com",
-      "opensharing.protocol-prefix=/open-sharing",
-      "opensharing.security.credential-encryption-key=" + ServerTestBase.CREDENTIAL_KEY
+      "opensharing.protocol-prefix=/opensharing",
+      "opensharing.security.credential-encryption-key=" + ServerTestBase.CREDENTIAL_KEY,
+      "opensharing.admin.principals[0].name=" + ServerTestBase.ALICE,
+      "opensharing.admin.principals[0].bearer-token=" + ServerTestBase.ALICE_TOKEN,
+      "opensharing.admin.principals[1].name=" + ServerTestBase.MALLORY,
+      "opensharing.admin.principals[1].bearer-token=" + ServerTestBase.MALLORY_TOKEN
     })
 @AutoConfigureMockMvc
 abstract class ServerTestBase {
 
-  static final String BOOTSTRAP_TOKEN = "test-bootstrap-token";
-
   /** Base64 of 32 bytes, so a catalog credential can be stored in tests that want one. */
   static final String CREDENTIAL_KEY = "c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=";
   static final String ADMIN_BASE = "/api/admin/v1";
-  static final String PROTOCOL_BASE = "/open-sharing";
+  static final String PROTOCOL_BASE = "/opensharing";
 
   /** The provider admin every test acts as, matching {@code sharableBy} in the test catalog. */
   static final String ALICE = "alice@example.com";
@@ -49,28 +51,24 @@ abstract class ServerTestBase {
   /** Alice's one secret: her login here and what the catalog is asked with as her. */
   static final String ALICE_TOKEN = "alice-secret";
 
+  /** A second provisioned principal for ownership tests. */
+  static final String MALLORY = "mallory@example.com";
+  static final String MALLORY_TOKEN = "mallory-secret";
+
   @Autowired protected MockMvc mvc;
   @Autowired protected ObjectMapper json;
-
-  /** One database is shared by every test in a class, so Alice may already be registered. */
-  @BeforeEach
-  void registerAlice() throws Exception {
-    mvc.perform(
-            post(ADMIN_BASE + "/principals")
-                .header("Authorization", "Bearer " + BOOTSTRAP_TOKEN)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"type\":\"USER\",\"name\":\""
-                        + ALICE
-                        + "\",\"bearer_token\":\""
-                        + ALICE_TOKEN
-                        + "\"}"))
-        .andExpect(status().is(oneOf(201, 409)));
-  }
+  @Autowired protected JdbcTemplate jdbc;
 
   /** Names have to be unique because one database is shared by every test in a class. */
   protected String unique(String prefix) {
     return prefix + "_" + Long.toHexString(System.nanoTime());
+  }
+
+  protected String principalId(String name) {
+    return jdbc.queryForObject(
+        "select id from principals where name_lower = ?",
+        String.class,
+        name.toLowerCase(Locale.ROOT));
   }
 
   protected JsonNode adminPost(String path, String body) throws Exception {

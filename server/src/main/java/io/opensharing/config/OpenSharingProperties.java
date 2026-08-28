@@ -1,6 +1,8 @@
 package io.opensharing.config;
 
+import io.opensharing.principal.PrincipalType;
 import java.time.Duration;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** Server configuration under the {@code opensharing} prefix. */
@@ -8,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class OpenSharingProperties {
 
   /** URL prefix the recipient-facing protocol endpoints are mounted under. */
-  private String protocolPrefix = "/open-sharing";
+  private String protocolPrefix = "/opensharing";
 
   private final Admin admin = new Admin();
   private final Security security = new Security();
@@ -82,11 +84,10 @@ public class OpenSharingProperties {
     private String basePath = "/api/admin/v1";
 
     /**
-     * Token that registers the first principals, before anyone has one of their own. It is accepted
-     * only on {@code /principals}: everything else records an owner, so it needs a real principal. A
-     * random one is generated at startup when blank.
+     * Provider principals the server recognizes. Each entry is registered in the database at startup,
+     * and its bearer token is both the admin login and the credential presented to the catalog.
      */
-    private String bootstrapToken;
+    private List<Principal> principals = List.of();
 
     public String getBasePath() {
       return basePath;
@@ -96,12 +97,44 @@ public class OpenSharingProperties {
       this.basePath = prefix(basePath);
     }
 
-    public String getBootstrapToken() {
-      return bootstrapToken;
+    public List<Principal> getPrincipals() {
+      return principals;
     }
 
-    public void setBootstrapToken(String bootstrapToken) {
-      this.bootstrapToken = bootstrapToken;
+    public void setPrincipals(List<Principal> principals) {
+      this.principals = principals == null ? List.of() : List.copyOf(principals);
+    }
+
+    /** One username and credential the server provisions at startup. */
+    public static class Principal {
+
+      private String name;
+      private String bearerToken;
+      private PrincipalType type;
+
+      public String getName() {
+        return name;
+      }
+
+      public void setName(String name) {
+        this.name = name;
+      }
+
+      public String getBearerToken() {
+        return bearerToken;
+      }
+
+      public void setBearerToken(String bearerToken) {
+        this.bearerToken = bearerToken;
+      }
+
+      public PrincipalType getType() {
+        return type;
+      }
+
+      public void setType(PrincipalType type) {
+        this.type = type;
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 # Defaults for a local run. Any key here can be overridden per environment without editing the file:
 # pass --the.key.path=value as an argument, or set the upper-case underscored form of the path, such as
-# OPENSHARING_ADMIN_BOOTSTRAP_TOKEN for opensharing.admin.bootstrap-token.
+# OPENSHARING_SECURITY_CREDENTIAL_ENCRYPTION_KEY for opensharing.security.credential-encryption-key.
 spring:
   application:
     name: opensharing-server
@@ -29,12 +29,12 @@ server:
 
 opensharing:
   # Prefix the protocol-serving endpoints are mounted under; this is what goes in a profile file.
-  protocol-prefix: /open-sharing
+  protocol-prefix: /opensharing
   admin:
     base-path: /api/admin/v1
-    # Registers the first principals and is accepted only on /principals. A random one is generated
-    # and logged at startup when this is blank.
-    bootstrap-token: ""
+    # Provider principals provisioned at startup. Each bearer token is also the credential the
+    # catalog is asked with as that principal.
+    principals: []
   security:
     # Base64 AES key (16, 24 or 32 bytes) that a principal's catalog credential is encrypted with, so
     # the server can present it to the catalog while serving a recipient. Belongs in an environment

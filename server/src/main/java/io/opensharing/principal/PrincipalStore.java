@@ -7,16 +7,14 @@ import io.opensharing.catalog.CatalogCaller;
 import io.opensharing.http.ApiException;
 import io.opensharing.http.ErrorCodes;
 import jakarta.persistence.EntityManager;
-import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 /** Storage for principals. Name lookups are case-insensitive, as they are for every other object. */
 @Service
@@ -32,17 +30,12 @@ public class PrincipalStore {
   private static final int MAX_TOKEN_LENGTH = 2048;
 
   private final PrincipalRepository principals;
-  private final List<PrincipalUsage> usages;
   private final EntityManager entityManager;
   private final SecretCipher cipher;
 
   public PrincipalStore(
-      PrincipalRepository principals,
-      List<PrincipalUsage> usages,
-      EntityManager entityManager,
-      SecretCipher cipher) {
+      PrincipalRepository principals, EntityManager entityManager, SecretCipher cipher) {
     this.principals = principals;
-    this.usages = usages;
     this.entityManager = entityManager;
     this.cipher = cipher;
   }
@@ -106,24 +99,26 @@ public class PrincipalStore {
   }
 
   /**
-   * Only non-null fields are applied. Replacing the token invalidates the previous one at once and
-   * re-seals what the catalog is asked with, so it is also how a principal is brought back after the
-   * encryption key changes.
+   * Ensures a configured principal exists with the given token. Creates on first run and replaces the
+   * stored token when the configuration changes.
    */
-  public PrincipalEntity update(String name, String newName, String bearerToken) {
-    PrincipalEntity principal = require(name);
-    if (newName != null && !ObjectNames.normalize(newName).equals(principal.getNameLower())) {
-      ObjectNames.validatePrincipalName(newName);
-      if (principals.existsByNameLower(ObjectNames.normalize(newName))) {
-        throw ApiException.alreadyExists("principal '" + newName + "' already exists");
-      }
-      principal.setName(newName);
-    }
-    if (bearerToken != null) {
-      requireToken(bearerToken);
-      storeToken(principal, bearerToken);
-    }
-    return principals.save(principal);
+  public PrincipalEntity provision(PrincipalType type, String name, String bearerToken) {
+    ObjectNames.validatePrincipalName(name);
+    requireToken(bearerToken);
+    return principals
+        .findByNameLower(ObjectNames.normalize(name))
+        .map(
+            principal -> {
+              if (principals
+                  .findByTokenHash(Secrets.sha256(bearerToken))
+                  .filter(existing -> existing.getId().equals(principal.getId()))
+                  .isPresent()) {
+                return principal;
+              }
+              storeToken(principal, bearerToken);
+              return principals.save(principal);
+            })
+        .orElseGet(() -> create(null, type, name, bearerToken));
   }
 
   /**
@@ -146,8 +141,8 @@ public class PrincipalStore {
     String stored = principal.getCatalogCredential();
     if (stored == null) {
       log.error(
-          "No catalog credential is stored for '{}', so nothing they share can be served; give them "
-              + "a new bearer token through the admin API, which stores one",
+          "No catalog credential is stored for '{}', so nothing they share can be served; set their "
+              + "bearer token in opensharing.admin.principals",
           principal.getName());
       throw new ApiException(
           HttpStatus.INTERNAL_SERVER_ERROR,
@@ -184,34 +179,6 @@ public class PrincipalStore {
   @Transactional(readOnly = true)
   public PrincipalEntity require(Caller caller) {
     return requireById(caller.principalId());
-  }
-
-  @Transactional(readOnly = true)
-  public Page<PrincipalEntity> list(Pageable pageable) {
-    return principals.findAllByOrderByNameLowerAsc(pageable);
-  }
-
-  /**
-   * Deleting a principal is refused while anything still points at it, since shares and recipients
-   * record who owns and who authored them, and an audit trail that names nobody is worse than one
-   * that names someone who has left.
-   */
-  public void delete(String name) {
-    PrincipalEntity principal = require(name);
-    List<String> references =
-        usages.stream()
-            .flatMap(usage -> usage.describeReferencesTo(principal).stream())
-            .sorted()
-            .toList();
-    if (!references.isEmpty()) {
-      throw ApiException.conflict(
-          "principal '"
-              + principal.getName()
-              + "' still has "
-              + String.join(", ", references)
-              + "; delete those first");
-    }
-    principals.delete(principal);
   }
 
   /**
