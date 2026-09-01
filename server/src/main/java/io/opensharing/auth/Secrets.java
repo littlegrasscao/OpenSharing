@@ -37,15 +37,6 @@ public final class Secrets {
     }
   }
 
-  /** Timing-safe comparison for secrets compared outside the database. */
-  public static boolean timingSafeEquals(String a, String b) {
-    if (a == null || b == null) {
-      return false;
-    }
-    return MessageDigest.isEqual(
-        a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
-  }
-
   private static String randomUrlSafe() {
     byte[] bytes = new byte[TOKEN_BYTES];
     RANDOM.nextBytes(bytes);

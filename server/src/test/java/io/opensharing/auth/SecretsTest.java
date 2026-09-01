@@ -1,7 +1,6 @@
 package io.opensharing.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,12 +19,5 @@ class SecretsTest {
     String token = Secrets.newToken();
     assertTrue(token.startsWith(Secrets.TOKEN_PREFIX));
     assertNotEquals(token, Secrets.newToken());
-  }
-
-  @Test
-  void comparesTimingSafe() {
-    assertTrue(Secrets.timingSafeEquals("same", "same"));
-    assertFalse(Secrets.timingSafeEquals("same", "other"));
-    assertFalse(Secrets.timingSafeEquals(null, "other"));
   }
 }
