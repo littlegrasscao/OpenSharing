@@ -23,9 +23,9 @@ class SecretsTest {
   }
 
   @Test
-  void comparesInConstantTime() {
-    assertTrue(Secrets.constantTimeEquals("same", "same"));
-    assertFalse(Secrets.constantTimeEquals("same", "other"));
-    assertFalse(Secrets.constantTimeEquals(null, "other"));
+  void comparesTimingSafe() {
+    assertTrue(Secrets.timingSafeEquals("same", "same"));
+    assertFalse(Secrets.timingSafeEquals("same", "other"));
+    assertFalse(Secrets.timingSafeEquals(null, "other"));
   }
 }

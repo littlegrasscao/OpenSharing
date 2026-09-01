@@ -37,8 +37,8 @@ public final class Secrets {
     }
   }
 
-  /** Constant-time comparison, for secrets compared outside the database. */
-  public static boolean constantTimeEquals(String a, String b) {
+  /** Timing-safe comparison for secrets compared outside the database. */
+  public static boolean timingSafeEquals(String a, String b) {
     if (a == null || b == null) {
       return false;
     }
