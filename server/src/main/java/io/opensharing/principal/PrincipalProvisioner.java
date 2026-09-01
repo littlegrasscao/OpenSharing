@@ -22,31 +22,29 @@ public class PrincipalProvisioner implements ApplicationRunner {
   private static final Logger log = LoggerFactory.getLogger(PrincipalProvisioner.class);
 
   private final PrincipalStore principals;
-  private final List<OpenSharingProperties.Admin.Principal> configured;
+  private final List<OpenSharingProperties.Principal> configured;
 
   public PrincipalProvisioner(PrincipalStore principals, OpenSharingProperties properties) {
     this.principals = principals;
-    this.configured = properties.getAdmin().getPrincipals();
+    this.configured = properties.getPrincipals();
   }
 
   @Override
   public void run(ApplicationArguments args) {
     if (configured.isEmpty()) {
-      log.warn(
-          "No opensharing.admin.principals configured; no provider principals were registered");
+      log.warn("No opensharing.principals configured; no provider principals were registered");
       return;
     }
     Set<String> seen = new HashSet<>();
-    for (OpenSharingProperties.Admin.Principal entry : configured) {
+    for (OpenSharingProperties.Principal entry : configured) {
       String name = entry.getName();
       if (name == null || name.isBlank()) {
         throw new IllegalStateException(
-            "opensharing.admin.principals contains an entry with a blank name");
+            "opensharing.principals contains an entry with a blank name");
       }
       String normalized = name.trim().toLowerCase();
       if (!seen.add(normalized)) {
-        throw new IllegalStateException(
-            "opensharing.admin.principals lists '" + name + "' more than once");
+        throw new IllegalStateException("opensharing.principals lists '" + name + "' more than once");
       }
       PrincipalType type = entry.getType() == null ? PrincipalType.USER : entry.getType();
       principals.provision(type, name.trim(), entry.getBearerToken());

@@ -142,7 +142,7 @@ public class PrincipalStore {
     if (stored == null) {
       log.error(
           "No catalog credential is stored for '{}', so nothing they share can be served; set their "
-              + "bearer token in opensharing.admin.principals",
+              + "bearer token in opensharing.principals",
           principal.getName());
       throw new ApiException(
           HttpStatus.INTERNAL_SERVER_ERROR,

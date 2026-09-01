@@ -19,8 +19,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Authenticates a provider-admin request as a configured principal.
  *
- * <p>Principals are provisioned from {@code opensharing.admin.principals} at startup rather than
- * than through an admin API, so every request here must present one of those bearer tokens.
+ * <p>Principals are provisioned from {@code opensharing.principals} at startup rather than through
+ * an API, so every request here must present one of those bearer tokens.
  */
 public class AdminAuthenticationFilter extends OncePerRequestFilter {
 

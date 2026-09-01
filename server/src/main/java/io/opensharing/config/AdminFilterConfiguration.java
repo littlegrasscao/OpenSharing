@@ -17,7 +17,7 @@ public class AdminFilterConfiguration {
       PrincipalStore principals, ObjectMapper objectMapper, OpenSharingProperties properties) {
     FilterRegistrationBean<AdminAuthenticationFilter> registration =
         new FilterRegistrationBean<>(new AdminAuthenticationFilter(principals, objectMapper));
-    registration.addUrlPatterns(properties.getAdmin().getBasePath() + "/*");
+    registration.addUrlPatterns(properties.getApi().getBasePath() + "/*");
     registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
     return registration;
   }
