@@ -19,12 +19,12 @@ public final class Secrets {
 
   /** A new recipient bearer token. Returned to the caller once and never stored in clear text. */
   public static String newToken() {
-    return TOKEN_PREFIX + randomUrlSafe();
+    return TOKEN_PREFIX + randomToken();
   }
 
   /** A new single-use activation nonce. */
   public static String newActivationNonce() {
-    return randomUrlSafe();
+    return randomToken();
   }
 
   /** Lowercase hex SHA-256, the form persisted for tokens and nonces. */
@@ -37,7 +37,7 @@ public final class Secrets {
     }
   }
 
-  private static String randomUrlSafe() {
+  private static String randomToken() {
     byte[] bytes = new byte[TOKEN_BYTES];
     RANDOM.nextBytes(bytes);
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
