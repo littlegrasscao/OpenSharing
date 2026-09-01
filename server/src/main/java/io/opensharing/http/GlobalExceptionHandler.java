@@ -1,6 +1,7 @@
 package io.opensharing.http;
 
 import io.opensharing.catalog.AssetNotFoundException;
+import io.opensharing.catalog.CatalogAuthorizationException;
 import io.opensharing.catalog.CatalogException;
 import io.opensharing.catalog.UnsupportedAssetTypeException;
 import org.slf4j.Logger;
@@ -37,18 +38,21 @@ public class GlobalExceptionHandler {
     return body(HttpStatus.BAD_REQUEST, ErrorCodes.INVALID_PARAMETER_VALUE, e.getMessage());
   }
 
-  @ExceptionHandler(CatalogException.class)
-  public ResponseEntity<ErrorResponse> handleCatalog(CatalogException e) {
-    if (e.kind() == CatalogException.Kind.ACCESS_DENIED) {
+  @ExceptionHandler(CatalogAuthorizationException.class)
+  public ResponseEntity<ErrorResponse> handleCatalogAuthorization(
+      CatalogAuthorizationException e) {
+    if (e.reason() == CatalogAuthorizationException.Reason.ACCESS_DENIED) {
       return body(HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, e.getMessage());
     }
-    if (e.kind() == CatalogException.Kind.AUTHENTICATION_FAILED) {
-      log.error("The sharing server could not authenticate to the catalog", e);
-      return body(
-          HttpStatus.BAD_GATEWAY,
-          ErrorCodes.CATALOG_ERROR,
-          "the sharing server could not authenticate to the catalog");
-    }
+    log.error("The sharing server could not authenticate to the catalog", e);
+    return body(
+        HttpStatus.BAD_GATEWAY,
+        ErrorCodes.CATALOG_ERROR,
+        "the sharing server could not authenticate to the catalog");
+  }
+
+  @ExceptionHandler(CatalogException.class)
+  public ResponseEntity<ErrorResponse> handleCatalog(CatalogException e) {
     log.error("Catalog request failed", e);
     return body(HttpStatus.BAD_GATEWAY, ErrorCodes.CATALOG_ERROR, e.getMessage());
   }
