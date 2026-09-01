@@ -1,0 +1,66 @@
+# Defaults for a local run. Any key here can be overridden per environment without editing the file:
+# pass --the.key.path=value as an argument, or set the upper-case underscored form of the path, such as
+# OPENSHARING_ADMIN_BOOTSTRAP_TOKEN for opensharing.admin.bootstrap-token.
+spring:
+  application:
+    name: opensharing-server
+  datasource:
+    # The driver is derived from the URL, so pointing this at Postgres or MySQL is the only change
+    # needed to move the metadata store there.
+    url: jdbc:h2:file:./data/opensharing;AUTO_SERVER=TRUE
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  jackson:
+    default-property-inclusion: non_null
+    mapper:
+      accept-case-insensitive-enums: true
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8080
+  error:
+    whitelabel:
+      enabled: false
+
+opensharing:
+  # Prefix the protocol-serving endpoints are mounted under; this is what goes in a profile file.
+  protocol-prefix: /open-sharing
+  admin:
+    base-path: /api/admin/v1
+    # Registers the first principals and is accepted only on /principals. A random one is generated
+    # and logged at startup when this is blank.
+    bootstrap-token: ""
+  activation:
+    base-path: /activation
+    ttl: 72h
+    external-base-url: http://localhost:8080
+  recipient-tokens:
+    default-ttl: 90d
+    rotation-grace: 24h
+  asset-credentials:
+    ttl: 1h
+  pagination:
+    default-max-results: 500
+    max-max-results: 1000
+  delta:
+    # Reading Delta logs to serve version/metadata/query, and signing per-file urls from the
+    # credentials the catalog minted. Turning this off leaves dir access mode alone.
+    url-access-enabled: true
+    url-ttl: 1h
+    s3-region: us-east-1
+  catalog:
+    # 'local' reads every asset from a declarative file. It is the only connector this build ships.
+    type: local
+    local:
+      file: classpath:local-catalog.yml
+
+logging:
+  level:
+    io.opensharing: INFO
+    # Delta Kernel narrates every log segment it loads, which is a line per request.
+    io.delta: WARN
