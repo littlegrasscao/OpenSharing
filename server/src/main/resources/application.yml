@@ -29,7 +29,7 @@ server:
 
 opensharing:
   # Prefix the protocol-serving endpoints are mounted under; this is what goes in a profile file.
-  protocol-prefix: /open-sharing
+  protocol-prefix: /opensharing
   admin:
     base-path: /api/admin/v1
     # Registers the first principals and is accepted only on /principals. A random one is generated
