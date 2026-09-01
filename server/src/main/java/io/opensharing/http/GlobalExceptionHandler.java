@@ -1,9 +1,5 @@
 package io.opensharing.http;
 
-import io.opensharing.catalog.AssetNotFoundException;
-import io.opensharing.catalog.CatalogAuthorizationException;
-import io.opensharing.catalog.CatalogException;
-import io.opensharing.catalog.UnsupportedAssetTypeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,31 +22,6 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(ApiException.class)
   public ResponseEntity<ErrorResponse> handleApi(ApiException e) {
     return body(e.getStatus(), e.getErrorCode(), e.getMessage());
-  }
-
-  @ExceptionHandler(AssetNotFoundException.class)
-  public ResponseEntity<ErrorResponse> handleAssetNotFound(AssetNotFoundException e) {
-    return body(HttpStatus.NOT_FOUND, ErrorCodes.RESOURCE_DOES_NOT_EXIST, e.getMessage());
-  }
-
-  @ExceptionHandler(UnsupportedAssetTypeException.class)
-  public ResponseEntity<ErrorResponse> handleUnsupportedAsset(UnsupportedAssetTypeException e) {
-    return body(HttpStatus.BAD_REQUEST, ErrorCodes.INVALID_PARAMETER_VALUE, e.getMessage());
-  }
-
-  @ExceptionHandler(CatalogAuthorizationException.class)
-  public ResponseEntity<ErrorResponse> handleCatalogAuthorization(
-      CatalogAuthorizationException e) {
-    if (e.getCause() != null) {
-      log.error("Catalog authorization failed", e);
-    }
-    return body(HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, e.getMessage());
-  }
-
-  @ExceptionHandler(CatalogException.class)
-  public ResponseEntity<ErrorResponse> handleCatalog(CatalogException e) {
-    log.error("Catalog request failed", e);
-    return body(HttpStatus.BAD_GATEWAY, ErrorCodes.CATALOG_ERROR, e.getMessage());
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
