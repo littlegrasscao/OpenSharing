@@ -41,14 +41,10 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(CatalogAuthorizationException.class)
   public ResponseEntity<ErrorResponse> handleCatalogAuthorization(
       CatalogAuthorizationException e) {
-    if (e.reason() == CatalogAuthorizationException.Reason.ACCESS_DENIED) {
-      return body(HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, e.getMessage());
+    if (e.getCause() != null) {
+      log.error("Catalog authorization failed", e);
     }
-    log.error("The sharing server could not authenticate to the catalog", e);
-    return body(
-        HttpStatus.BAD_GATEWAY,
-        ErrorCodes.CATALOG_ERROR,
-        "the sharing server could not authenticate to the catalog");
+    return body(HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, e.getMessage());
   }
 
   @ExceptionHandler(CatalogException.class)
