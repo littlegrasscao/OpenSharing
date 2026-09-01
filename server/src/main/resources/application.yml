@@ -26,6 +26,16 @@ server:
     whitelabel:
       enabled: false
 
+opensharing:
+  admin:
+    base-path: /api/admin/v1
+    # Registers the first principals and is accepted only on /principals. A random one is generated
+    # and logged at startup when this is blank.
+    bootstrap-token: ""
+  pagination:
+    default-max-results: 500
+    max-max-results: 1000
+
 logging:
   level:
     io.opensharing: INFO
