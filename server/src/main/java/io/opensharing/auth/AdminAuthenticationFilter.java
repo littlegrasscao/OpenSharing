@@ -6,6 +6,7 @@ import io.opensharing.http.ErrorResponse;
 import io.opensharing.principal.Caller;
 import io.opensharing.principal.PrincipalEntity;
 import io.opensharing.principal.PrincipalStore;
+import io.opensharing.runtime.ProviderIdentityResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,17 +26,34 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class AdminAuthenticationFilter extends OncePerRequestFilter {
 
   private final PrincipalStore principals;
+  private final ProviderIdentityResolver identityResolver;
   private final ObjectMapper objectMapper;
 
-  public AdminAuthenticationFilter(PrincipalStore principals, ObjectMapper objectMapper) {
+  public AdminAuthenticationFilter(
+      PrincipalStore principals,
+      ObjectMapper objectMapper,
+      ProviderIdentityResolver identityResolver) {
     this.principals = principals;
     this.objectMapper = objectMapper;
+    this.identityResolver = identityResolver;
+  }
+
+  public AdminAuthenticationFilter(PrincipalStore principals, ObjectMapper objectMapper) {
+    this(principals, objectMapper, null);
   }
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
+    if (identityResolver != null) {
+      Optional<Caller> resolved = identityResolver.resolve(request);
+      if (resolved.isPresent()) {
+        request.setAttribute(Caller.REQUEST_ATTRIBUTE, resolved.get());
+        chain.doFilter(request, response);
+        return;
+      }
+    }
     Optional<String> presented = BearerTokens.from(request);
     if (presented.isEmpty()) {
       reject(response, "a provider-admin bearer token is required");

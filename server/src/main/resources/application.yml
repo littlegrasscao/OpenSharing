@@ -30,6 +30,10 @@ server:
 opensharing:
   # Prefix the protocol-serving endpoints are mounted under; this is what goes in a profile file.
   protocol-prefix: /opensharing
+  hosting:
+    # standalone: run as its own Spring Boot process with opensharing.catalog.* and admin principals.
+    # embedded: host registers a CatalogConnector bean (see io.opensharing.runtime.OpenSharing).
+    mode: standalone
   admin:
     base-path: /api/admin/v1
     # Provider principals provisioned at startup. Each bearer token is also the credential the

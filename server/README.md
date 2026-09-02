@@ -4,6 +4,12 @@ A prototype implementation of the [OpenSharing protocol](../spec/protocols/) —
 manages shares and serves them to recipients, with the catalog and the database as replaceable
 components.
 
+**Deployment.** The reference server runs **standalone** by default (`OpenSharing.runStandalone` or
+`OpenSharingServer.main`). It can also run **embedded** inside a host such as Unity Catalog OSS: the
+host registers a `CatalogConnector` (and optionally a `ProviderIdentityResolver`) so catalog calls
+stay in-process and provider configuration is not duplicated. See
+[`docs/EMBEDDING.md`](docs/EMBEDDING.md).
+
 **Scope: tables only.** The protocol also defines volumes, agent skills and models; this prototype
 starts with tables, shared either one at a time or by the schema that holds them. The catalog is a
 trait (`CatalogConnector`) with two implementations: open-source [Unity
@@ -72,7 +78,8 @@ recipient-facing protocol is the one exception, and has a package of its own.
 | `catalog` | The `CatalogConnector` trait a new catalog implements and the types it exchanges, including `CatalogCaller`. Each implementation gets a subpackage: `catalog.local` is the file-backed one, `catalog.unity` is Unity Catalog — a client that speaks its REST API and a connector that says what the answers mean. |
 | `protocol` | Every wire shape the spec defines, inbound and outbound, and nothing else: `Share`, `Schema`, `Table`, `TemporaryCredentials` and its request body, the profile file, the read-response actions in both formats — `TableAction` is the one line of a response, and each of its slots takes either the parquet shape or the delta one — and the Iceberg REST shapes, whose spelling is Iceberg's rather than this protocol's. No behaviour, no dependencies. |
 | `auth` | Admin authentication, bearer-token extraction and the token hashing every side shares. |
-| `config` | Properties and bean wiring: which catalog, which filters, which argument resolvers, and how the two APIs are published as OpenAPI. |
+| `config` | Properties and bean wiring: which catalog, which filters, which argument resolvers, hosting mode, and how the two APIs are published as OpenAPI. |
+| `runtime` | Library entry point (`OpenSharing`), hosting mode (`standalone` / `embedded`), `SharingRuntime`, and `ProviderIdentityResolver` for UC embed. |
 | `http` | What both APIs put on the wire regardless of endpoint: `ApiFailure` (what a failure amounts to — a status, a code and something readable — decided once because it is written down two ways) and the `{errorCode, message}` body most of the protocol answers with, the `{items, nextPageToken}` envelope with the paging machinery that fills it, `@AdminJson` (the snake_case marker), and the protocol content type. |
 
 `serving` sits apart from the per-thing packages because the protocol is a single contract that cuts

@@ -1,5 +1,7 @@
 package io.opensharing.config;
 
+import io.opensharing.runtime.ConditionalOnHostingMode;
+import io.opensharing.runtime.HostingMode;
 import io.opensharing.catalog.CatalogConnector;
 import io.opensharing.catalog.CatalogException;
 import io.opensharing.catalog.local.LocalCatalogConnector;
@@ -24,6 +26,7 @@ import org.springframework.core.io.ResourceLoader;
  * {@code CatalogConnector} bean, which takes precedence over this one.
  */
 @Configuration
+@ConditionalOnHostingMode(HostingMode.STANDALONE)
 public class CatalogConfiguration {
 
   private static final Logger log = LoggerFactory.getLogger(CatalogConfiguration.class);

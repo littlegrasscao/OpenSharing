@@ -1,6 +1,7 @@
 package io.opensharing.config;
 
 import io.opensharing.principal.PrincipalType;
+import io.opensharing.runtime.HostingMode;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -11,6 +12,8 @@ public class OpenSharingProperties {
 
   /** URL prefix the recipient-facing protocol endpoints are mounted under. */
   private String protocolPrefix = "/opensharing";
+
+  private final Hosting hosting = new Hosting();
 
   private final Admin admin = new Admin();
   private final Security security = new Security();
@@ -28,6 +31,10 @@ public class OpenSharingProperties {
 
   public void setProtocolPrefix(String protocolPrefix) {
     this.protocolPrefix = prefix(protocolPrefix);
+  }
+
+  public Hosting getHosting() {
+    return hosting;
   }
 
   /**
@@ -75,6 +82,32 @@ public class OpenSharingProperties {
 
   public Catalog getCatalog() {
     return catalog;
+  }
+
+  /** Whether OpenSharing runs standalone or embedded in a host process. */
+  public static class Hosting {
+
+    private Mode mode = Mode.STANDALONE;
+
+    public Mode getMode() {
+      return mode;
+    }
+
+    public void setMode(Mode mode) {
+      this.mode = mode == null ? Mode.STANDALONE : mode;
+    }
+
+    public HostingMode toHostingMode() {
+      return switch (getMode()) {
+        case STANDALONE -> HostingMode.STANDALONE;
+        case EMBEDDED -> HostingMode.EMBEDDED;
+      };
+    }
+
+    public enum Mode {
+      STANDALONE,
+      EMBEDDED
+    }
   }
 
   /** Provider-admin API settings. */

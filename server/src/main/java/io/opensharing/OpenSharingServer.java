@@ -1,7 +1,7 @@
 package io.opensharing;
 
 import io.opensharing.config.OpenSharingProperties;
-import org.springframework.boot.SpringApplication;
+import io.opensharing.runtime.OpenSharing;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
@@ -10,6 +10,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 public class OpenSharingServer {
 
   public static void main(String[] args) {
-    SpringApplication.run(OpenSharingServer.class, args);
+    OpenSharing.runStandalone(args);
   }
 }

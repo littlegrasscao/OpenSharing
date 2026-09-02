@@ -1,6 +1,8 @@
 package io.opensharing.principal;
 
 import io.opensharing.config.OpenSharingProperties;
+import io.opensharing.runtime.ConditionalOnHostingMode;
+import io.opensharing.runtime.HostingMode;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Component;
  * updated token is how a credential is rotated.
  */
 @Component
+@ConditionalOnHostingMode(HostingMode.STANDALONE)
 public class PrincipalProvisioner implements ApplicationRunner {
 
   private static final Logger log = LoggerFactory.getLogger(PrincipalProvisioner.class);
