@@ -1,5 +1,6 @@
 package io.opensharing.config;
 
+import io.opensharing.auth.CatalogAuthType;
 import io.opensharing.principal.PrincipalType;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -52,12 +53,13 @@ public class OpenSharingProperties {
     }
   }
 
-  /** One username and credential the server provisions at startup. */
   public static class Principal {
 
     private String name;
-    private String bearerToken;
+    private String id;
     private PrincipalType type;
+    private CatalogAuthType authType;
+    private String bearerToken;
 
     public String getName() {
       return name;
@@ -67,12 +69,12 @@ public class OpenSharingProperties {
       this.name = name;
     }
 
-    public String getBearerToken() {
-      return bearerToken;
+    public String getId() {
+      return id;
     }
 
-    public void setBearerToken(String bearerToken) {
-      this.bearerToken = bearerToken;
+    public void setId(String id) {
+      this.id = id;
     }
 
     public PrincipalType getType() {
@@ -81,6 +83,22 @@ public class OpenSharingProperties {
 
     public void setType(PrincipalType type) {
       this.type = type;
+    }
+
+    public CatalogAuthType getAuthType() {
+      return authType;
+    }
+
+    public void setAuthType(CatalogAuthType authType) {
+      this.authType = authType;
+    }
+
+    public String getBearerToken() {
+      return bearerToken;
+    }
+
+    public void setBearerToken(String bearerToken) {
+      this.bearerToken = bearerToken;
     }
   }
 
