@@ -1,6 +1,7 @@
 package io.opensharing.principal;
 
 import io.opensharing.ObjectNames;
+import io.opensharing.auth.CatalogAuthType;
 import io.opensharing.auth.SecretCipher;
 import io.opensharing.auth.Secrets;
 import io.opensharing.catalog.CatalogCaller;
@@ -45,7 +46,8 @@ public class PrincipalStore {
    * @param bearerToken the one secret a principal has, kept in the two forms {@link #storeToken}
    *     explains
    */
-  public PrincipalEntity create(String id, PrincipalType type, String name, String bearerToken) {
+  public PrincipalEntity create(
+      String id, PrincipalType type, CatalogAuthType authType, String name, String bearerToken) {
     ObjectNames.validatePrincipalName(name);
     requireToken(bearerToken);
     if (principals.existsByNameLower(ObjectNames.normalize(name))) {
@@ -56,6 +58,7 @@ public class PrincipalStore {
       principal.setId(claimId(id));
     }
     principal.setType(type);
+    principal.setAuthType(authType);
     principal.setName(name);
     storeToken(principal, bearerToken);
     // An insert rather than a save, because saving a caller-supplied id that is already taken would
@@ -102,23 +105,33 @@ public class PrincipalStore {
    * Ensures a configured principal exists with the given token. Creates on first run and replaces the
    * stored token when the configuration changes.
    */
-  public PrincipalEntity provision(PrincipalType type, String name, String bearerToken) {
+  public PrincipalEntity provision(
+      String id, PrincipalType type, CatalogAuthType authType, String name, String bearerToken) {
     ObjectNames.validatePrincipalName(name);
-    requireToken(bearerToken);
+    requireCatalogAuth(authType, bearerToken);
     return principals
         .findByNameLower(ObjectNames.normalize(name))
         .map(
             principal -> {
+              boolean changed = false;
+              if (principal.getType() != type) {
+                principal.setType(type);
+                changed = true;
+              }
+              if (principal.getAuthType() != authType) {
+                principal.setAuthType(authType);
+                changed = true;
+              }
               if (principals
                   .findByTokenHash(Secrets.sha256(bearerToken))
                   .filter(existing -> existing.getId().equals(principal.getId()))
                   .isPresent()) {
-                return principal;
+                return changed ? principals.save(principal) : principal;
               }
               storeToken(principal, bearerToken);
               return principals.save(principal);
             })
-        .orElseGet(() -> create(null, type, name, bearerToken));
+        .orElseGet(() -> create(id, type, authType, name, bearerToken));
   }
 
   /**
@@ -188,6 +201,13 @@ public class PrincipalStore {
    * arrives as a constraint violation, which is answered as a conflict, which would tell an
    * administrator their principal already exists when the truth is that their token does not fit.
    */
+  private static void requireCatalogAuth(CatalogAuthType authType, String bearerToken) {
+    if (authType == CatalogAuthType.OIDC) {
+      throw ApiException.invalidParameter("auth_type OIDC is not implemented yet");
+    }
+    requireToken(bearerToken);
+  }
+
   private static void requireToken(String bearerToken) {
     if (bearerToken == null || bearerToken.isBlank()) {
       throw ApiException.invalidParameter("bearer_token must not be blank");

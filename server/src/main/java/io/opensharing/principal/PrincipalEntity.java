@@ -2,6 +2,7 @@ package io.opensharing.principal;
 
 import io.opensharing.BaseEntity;
 import io.opensharing.ObjectNames;
+import io.opensharing.auth.CatalogAuthType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -30,6 +31,10 @@ public class PrincipalEntity extends BaseEntity {
   @Enumerated(EnumType.STRING)
   @Column(name = "type", nullable = false, length = 16)
   private PrincipalType type;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "auth_type", nullable = false, length = 16)
+  private CatalogAuthType authType = CatalogAuthType.TOKEN;
 
   @Column(name = "name", nullable = false, length = 255)
   private String name;
@@ -69,6 +74,14 @@ public class PrincipalEntity extends BaseEntity {
 
   public void setType(PrincipalType type) {
     this.type = type;
+  }
+
+  public CatalogAuthType getAuthType() {
+    return authType;
+  }
+
+  public void setAuthType(CatalogAuthType authType) {
+    this.authType = authType;
   }
 
   public String getName() {
