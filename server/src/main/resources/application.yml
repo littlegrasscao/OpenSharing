@@ -26,6 +26,17 @@ server:
     whitelabel:
       enabled: false
 
+opensharing:
+  api:
+    base-path: /api/v1
+  principals: []
+  security:
+    # Encrypts and decrypts principal bearer tokens in storage for catalog calls on recipient APIs.
+    credential-encryption-key: ""
+  pagination:
+    default-max-results: 500
+    max-max-results: 1000
+
 logging:
   level:
     io.opensharing: INFO
