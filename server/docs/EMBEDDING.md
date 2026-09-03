@@ -13,7 +13,9 @@ the catalog is already in the same JVM.
 | `io.opensharing:opensharing-server` | Runnable distribution (`-exec` classifier is the fat jar) |
 | `io.opensharing:opensharing-server:exec` | Same as `opensharing-server-*-exec.jar` for `java -jar` |
 
-Standalone HTTP catalog connectors (`local`, `unity`) live in `opensharing-server`, not in core.
+The `local` file-based connector is standalone-only and lives in `opensharing-server`. The `unity`
+HTTP connector (`io.opensharing.catalog.unity.UnityCatalogConnector`) lives in **core**, because
+embedded mode reuses it too — see "Embedded in Unity Catalog OSS" below.
 
 ## Publish locally for UC testing
 
@@ -77,25 +79,53 @@ cd server
 mvn -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="--server.port=8099 ..."
 ```
 
-## Embedded in Unity Catalog OSS (target)
+## Embedded in Unity Catalog OSS
 
 The host supplies two integration points:
 
-1. **`CatalogConnector`** — in-process adapter that calls UC repositories and
-   `StorageCredentialVendor` instead of `UnityCatalogConnector` HTTP.
+1. **`CatalogConnector`** — for UC, this is the *same* `UnityCatalogConnector` standalone mode
+   uses, pointed at UC's own Armeria server on `127.0.0.1:<armeriaPort>` instead of a remote URL.
 2. **`ProviderIdentityResolver`** (optional) — maps the current UC-authenticated principal to a
    `Caller` for provider-admin APIs, replacing `opensharing.admin.principals`.
 
 ```java
 OpenSharing.embedded()
-    .catalog(new UnityCatalogEmbeddedConnector(ucRepositories, credentialVendor))
-    .identityResolver(request -> Optional.of(ucPrincipalToCaller(ucContext)))
-  .property("opensharing.protocol-prefix", "/api/2.1/opensharing")
-  .run();
+    .catalog(new UnityCatalogConnector(
+        URI.create("http://127.0.0.1:" + armeriaPort + "/api/2.1/unity-catalog"),
+        connectTimeout, requestTimeout))
+    .identityResolver(new UnityCatalogProviderIdentityResolver(...))
+    .property("opensharing.protocol-prefix", "/api/2.1/opensharing")
+    .run();
 ```
+
+This is a real HTTP call, not a direct repository read, and that is deliberate: UC enforces its own
+grants (metastore / catalog / schema / table privileges) in a decorator wrapped around Armeria's
+HTTP dispatch (`UnityAccessDecorator`), not inside the repositories or service methods themselves —
+a repository call, or even a plain Java call into a UC service class, bypasses every grant check UC
+has. Going through the real endpoint, on the loopback address UC itself is reached on and presenting
+the caller's own bearer token, is what lets embedding reuse UC's authorization instead of
+reimplementing it. See "Authorization in embedded mode" below.
 
 Recipient protocol endpoints, share metadata (JPA), credential vending, and Delta/Iceberg serving
 stay in OpenSharing. Only catalog access and provider authentication are delegated to the host.
+
+## Authorization in embedded mode
+
+Every catalog operation OpenSharing performs on a provider's or recipient's behalf — resolving a
+table or schema, listing a shared schema's tables, minting storage credentials — is a real HTTP
+call from `UnityCatalogConnector` to UC's own Armeria server at `127.0.0.1:<armeriaPort>`,
+presenting the `CatalogCaller`'s own UC bearer token as `Authorization: Bearer ...`. That request
+passes through UC's normal decorator chain exactly as if it had arrived on UC's public port: UC's
+`UnityAccessDecorator` evaluates the same `@AuthorizeExpression` (metastore/catalog/schema/table
+`OWNER`, `USE_CATALOG`, `USE_SCHEMA`, `SELECT`, ...) it would for any other client. A principal with
+no grant on the asset gets UC's own `403 PERMISSION_DENIED`, which the connector turns into
+`AssetAccessDeniedException` — the same failure standalone mode reports when the remote catalog
+refuses a request, translated by the same, already-tested code
+(`UnityCatalogConnectorTest`).
+
+Nothing about embedding weakens this: there is no second, simplified authorization model to keep in
+sync with UC's, and a grant revoked in UC is enforced on the very next call, because it *is* UC
+answering.
 
 ## One process, one address
 
@@ -158,18 +188,12 @@ Two things worth knowing about it:
 
 ### `CatalogConnector`
 
-Already the main seam (`catalog/CatalogConnector.java`). For UC embed, add something like:
-
-```java
-public final class UnityCatalogEmbeddedConnector implements CatalogConnector {
-  // resolveAsset → TableRepository + UC authorization
-  // getStorageCredentials → StorageCredentialVendor.vendCredential(...)
-  // listChildren → schema table listing
-}
-```
-
-No `opensharing.catalog.unity.uri` and no duplicated bearer token: the connector uses the UC
-request context or explicit `CatalogCaller` name only where UC RBAC requires a principal identity.
+Already the main seam (`catalog/CatalogConnector.java`). For UC embed, no new implementation is
+needed at all: `OpenSharingLifecycle` (in the UC repository's `server-sharing` module) constructs
+the existing `io.opensharing.catalog.unity.UnityCatalogConnector` — the same class standalone mode
+uses against a remote Unity Catalog — pointed at `127.0.0.1:<armeriaPort>` instead of a configured
+`opensharing.catalog.unity.uri`. Every call still presents the `CatalogCaller`'s own bearer token,
+exactly as standalone mode does; only the address changes.
 
 ### `ProviderIdentityResolver`
 
@@ -221,6 +245,7 @@ For the two-process demo (released UC jar + standalone OpenSharing), use `demo-u
 
 ## Roadmap
 
-`UnityCatalogEmbeddedConnector` and UC startup wiring live in the UC repository (`server-sharing`
-module). This repo ships the library artifact (`opensharing-server-core`) and the standalone
-distribution (`opensharing-server`).
+`OpenSharingLifecycle`, `UnityCatalogProviderIdentityResolver`, and the rest of UC's startup wiring
+live in the UC repository (`server-sharing` module). This repo ships the library artifact
+(`opensharing-server-core`, which includes the `unity` HTTP connector reused by both standalone and
+embedded mode) and the standalone distribution (`opensharing-server`).
