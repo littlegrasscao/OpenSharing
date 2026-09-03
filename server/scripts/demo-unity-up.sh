@@ -18,7 +18,7 @@ UC_VERSION="${UC_VERSION:-0.6.0}"
 UC_PORT="${UC_PORT:-8080}"
 UC_URI="http://localhost:$UC_PORT/api/2.1/unity-catalog"
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURE="$SERVER_DIR/src/test/resources/delta-table/stocked"
+FIXTURE="$SERVER_DIR/opensharing-server-core/src/test/resources/delta-table/stocked"
 
 mkdir -p "$DEMO_HOME/etc/conf" "$DEMO_HOME/data"
 
@@ -238,7 +238,7 @@ elif [[ -f "$SERVER_DIR/.mvn/local-mirror-settings.xml" ]]; then
 fi
 cat <<NEXT
 
-  cd $SERVER_DIR && $MVN_CMD spring-boot:run -Dspring-boot.run.arguments="\\
+  cd $SERVER_DIR && $MVN_CMD -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="\\
     --server.port=8099 \\
     --opensharing.activation.external-base-url=http://localhost:8099 \\
     --opensharing.catalog.type=unity \\

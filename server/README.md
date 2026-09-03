@@ -63,10 +63,17 @@ PROVIDER ADMIN (a principal)            RECIPIENT
 
 ### Layout
 
-One Maven module builds one jar, `opensharing-server`. The things the server governs get a package
-each, and each one holds everything about that thing: its JPA entity, its repository, its store, the
-provider-admin endpoints that touch it, and the request and response types they use. The
-recipient-facing protocol is the one exception, and has a package of its own.
+Two Maven modules build two jars:
+
+| Module | Artifact | Role |
+|--------|----------|------|
+| `opensharing-server-core` | plain jar | Embeddable library (`OpenSharing.embedded()`, protocol, JPA) |
+| `opensharing-server` | `-exec` fat jar | Runnable standalone server (`OpenSharingServer.main`) |
+
+The things the server governs get a package each, and each one holds everything about that thing: its
+JPA entity, its repository, its store, the provider-admin endpoints that touch it, and the request and
+response types they use. The recipient-facing protocol is the one exception, and has a package of its
+own.
 
 | Package | What it holds |
 |---|---|
@@ -75,7 +82,7 @@ recipient-facing protocol is the one exception, and has a package of its own.
 | `asset` | Everything about a shared asset that does not depend on its format: `SharedDataObjectEntity` and its status, `SharedDataObjectStore` and `SharedDataObjectService`, `SharedAliases` (the alias rules), `SharedTableService` (which tables a share holds, expanding a shared schema), `AssetResolutionService` (the server's use of the catalog trait, and so where the access modes an object offers are decided), `CredentialVendingService` and `TableMapper`. `asset.storage` holds reaching the storage a table lives in, whatever its format: the `UrlSigner` per scheme, the `StorageReader` that fetches a file the server itself has to look at, `StoragePaths` (whether a path is one of a shared table's own — asked by every format, so answered once), and `HadoopStorage`, which is how a read that goes through Hadoop gets the catalog's credentials and the path spelling a driver wants, `VendedGcsToken` included. Then one subpackage per format: `asset.delta` is url access mode — `DeltaLogReader` over Delta Kernel, `DeltaSharingCapabilities` (which response format a request settles on, and how much of the table's protocol the client is told) and a `DeltaLines` writer per format — and `asset.iceberg` is the Iceberg catalog's `loadTable`, plus the refusal that sends the Delta read operations there. |
 | `serving` | The recipient-facing protocol: `RecipientApi` (every route it serves), the share, schema and table discovery endpoints, credential vending, the four table read operations, the Iceberg REST catalog with the error shape its clients read, and the `TableOperations` seam those read operations dispatch across. |
 | `recipient` | `RecipientEntity`, `RecipientTokenEntity` and `AuthType`, `RecipientStore`, the provider-admin recipient and rotation endpoints, token minting, rotation and one-time activation, `IpAccessList`, and the filter and principal that authenticate a recipient request. |
-| `catalog` | The `CatalogConnector` trait a new catalog implements and the types it exchanges, including `CatalogCaller`. Each implementation gets a subpackage: `catalog.local` is the file-backed one, `catalog.unity` is Unity Catalog — a client that speaks its REST API and a connector that says what the answers mean. |
+| `catalog` | The `CatalogConnector` trait a new catalog implements and the types it exchanges, including `CatalogCaller`. Standalone connectors live in the `opensharing-server` module: `catalog.local` is the file-backed one, `catalog.unity` is Unity Catalog over HTTP. |
 | `protocol` | Every wire shape the spec defines, inbound and outbound, and nothing else: `Share`, `Schema`, `Table`, `TemporaryCredentials` and its request body, the profile file, the read-response actions in both formats — `TableAction` is the one line of a response, and each of its slots takes either the parquet shape or the delta one — and the Iceberg REST shapes, whose spelling is Iceberg's rather than this protocol's. No behaviour, no dependencies. |
 | `auth` | Admin authentication, bearer-token extraction and the token hashing every side shares. |
 | `config` | Properties and bean wiring: which catalog, which filters, which argument resolvers, hosting mode, and how the two APIs are published as OpenAPI. |
@@ -202,7 +209,7 @@ Requirements: Java 21 and Maven.
 ```bash
 cd server
 mvn install
-mvn spring-boot:run -Dspring-boot.run.arguments="\
+mvn -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="\
   --opensharing.admin.principals[0].name=alice@example.com \
   --opensharing.admin.principals[0].bearer-token=dapi-alice-secret \
   --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
@@ -867,7 +874,7 @@ H2 by default. Both other drivers ship in the jar, and switching is configuratio
 enough, since the driver is derived from it and Hibernate detects the dialect from the connection:
 
 ```bash
-mvn spring-boot:run -Dspring-boot.run.arguments="\
+mvn -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="\
   --spring.datasource.url=jdbc:postgresql://localhost:5432/opensharing \
   --spring.datasource.username=opensharing \
   --spring.datasource.password=secret"

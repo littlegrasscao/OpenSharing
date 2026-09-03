@@ -5,6 +5,50 @@ process such as [Unity Catalog OSS](https://www.unitycatalog.io/). Embedded mode
 do not run two services, duplicate provider configuration, or round-trip catalog calls over HTTP when
 the catalog is already in the same JVM.
 
+## Maven artifacts
+
+| Artifact | Use |
+|----------|-----|
+| `io.opensharing:opensharing-server-core` | Library for UC embed — `OpenSharing.embedded()`, protocol serving, JPA metadata store |
+| `io.opensharing:opensharing-server` | Runnable distribution (`-exec` classifier is the fat jar) |
+| `io.opensharing:opensharing-server:exec` | Same as `opensharing-server-*-exec.jar` for `java -jar` |
+
+Standalone HTTP catalog connectors (`local`, `unity`) live in `opensharing-server`, not in core.
+
+## Publish locally for UC testing
+
+From `server/`:
+
+```bash
+mvn install
+# On machines that cannot reach Maven Central directly:
+mvn -s .mvn/local-mirror-settings.xml install
+```
+
+This installs into `~/.m2/repository`:
+
+```
+io/opensharing/opensharing-server-core/0.1.0-SNAPSHOT/opensharing-server-core-0.1.0-SNAPSHOT.jar
+io/opensharing/opensharing-server/0.1.0-SNAPSHOT/opensharing-server-0.1.0-SNAPSHOT-exec.jar
+```
+
+UC depends on **core only** (plain jar, not `-exec`):
+
+```scala
+// unitycatalog/build.sbt — server project libraryDependencies
+"io.opensharing" % "opensharing-server-core" % "0.1.0-SNAPSHOT"
+```
+
+Unity Catalog already adds `Resolver.mavenLocal`, so `mvn install` in OpenSharing is enough before
+`publishLocal` / `sbt server/compile` in UC.
+
+After changing OpenSharing, reinstall and rebuild UC:
+
+```bash
+cd ~/OpenSharing/server && mvn install -DskipTests
+cd ~/unitycatalog && sbt "server/compile"
+```
+
 ## Modes
 
 | Mode | How to start | Catalog | Provider identity |
@@ -18,12 +62,19 @@ Set `opensharing.hosting.mode` in configuration (`standalone` by default).
 
 ```bash
 # Unity Catalog on :8080, OpenSharing on :8099 — two processes
-java -jar opensharing-server.jar \
+java -jar opensharing-server-0.1.0-SNAPSHOT-exec.jar \
   --opensharing.hosting.mode=standalone \
   --opensharing.catalog.type=unity \
   --opensharing.catalog.unity.uri=http://localhost:8080/api/2.1/unity-catalog \
   --opensharing.admin.principals[0].name=admin@example.com \
   --opensharing.admin.principals[0].bearer-token=$UC_TOKEN
+```
+
+Or from source:
+
+```bash
+cd server
+mvn -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="--server.port=8099 ..."
 ```
 
 ## Embedded in Unity Catalog OSS (target)
@@ -87,8 +138,30 @@ Beans gated on hosting mode:
 
 Inspect runtime mode: inject `SharingRuntime` and call `hostingMode()`.
 
+## Demo (embedded UC)
+
+From `server/` after UC integration is built in a sibling `unitycatalog` checkout:
+
+```bash
+# terminal A — build, configure, start UC with embedded OpenSharing
+UC_ROOT=~/unitycatalog ./scripts/demo-embedded-up.sh
+
+# terminal B — walkthrough (share, recipient, protocol)
+source ~/.opensharing-embedded-demo/demo.env
+./scripts/demo-embedded.sh
+# or step through while recording:
+PAUSE=ask ./scripts/demo-embedded.sh
+```
+
+`demo-embedded-up.sh` runs `mvn install` for `opensharing-server-core`, then
+`sbt serverEmbedded/exportEmbeddedClasspath` in UC. Unity Catalog listens on `UC_PORT` (default
+8080); embedded OpenSharing serves admin and protocol on `OS_PORT` (default 8099).
+
+For the two-process demo (released UC jar + standalone OpenSharing), use `demo-unity-up.sh` and
+`demo.sh` instead.
+
 ## Roadmap
 
-This change introduces the **runtime API** (`io.opensharing.runtime`) and hosting-mode wiring. A
-follow-up splits Maven modules (`opensharing-api`, `opensharing-runtime`, `opensharing-server`) and
-adds `UnityCatalogEmbeddedConnector` in the UC repository.
+`UnityCatalogEmbeddedConnector` and UC startup wiring live in the UC repository (`server-sharing`
+module). This repo ships the library artifact (`opensharing-server-core`) and the standalone
+distribution (`opensharing-server`).

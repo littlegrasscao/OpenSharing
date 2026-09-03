@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end walkthrough of the OpenSharing reference server against a running instance.
 #
-#   1. terminal A:  cd server && mvn spring-boot:run -Dspring-boot.run.arguments="\
+#   1. terminal A:  cd server && mvn -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="\
 #                     --opensharing.admin.principals[0].name=alice@example.com \
 #                     --opensharing.admin.principals[0].bearer-token=dapi-alice-secret \
 #                     --opensharing.admin.principals[1].name=bob@example.com \
