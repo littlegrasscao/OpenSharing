@@ -6,8 +6,9 @@
 # Environment:
 #   DEMO_HOME        runtime data and config               (default ~/.opensharing-embedded-demo)
 #   UC_ROOT          path to a unitycatalog checkout       (default ~/unitycatalog)
-#   UC_PORT          public Unity Catalog port             (default 8080)
-#   OS_PORT          embedded OpenSharing port             (default 8099)
+#   UC_PORT          the one public port — UC and OpenSharing both answer here (default 8080)
+#   OS_INTERNAL_PORT OpenSharing's own port, bound to 127.0.0.1 and reached only through UC_PORT
+#                    (default 8099)
 #   MVN_SETTINGS     Maven settings for OpenSharing build  (default server/.mvn/local-mirror-settings.xml when present)
 #   MAVEN_PROXY_URL  Maven mirror for UC sbt               (default Databricks proxy when unset)
 set -euo pipefail
@@ -15,7 +16,7 @@ set -euo pipefail
 DEMO_HOME="${DEMO_HOME:-$HOME/.opensharing-embedded-demo}"
 UC_ROOT="${UC_ROOT:-$HOME/unitycatalog}"
 UC_PORT="${UC_PORT:-8080}"
-OS_PORT="${OS_PORT:-8099}"
+OS_INTERNAL_PORT="${OS_INTERNAL_PORT:-8099}"
 UC_URI="http://localhost:$UC_PORT/api/2.1/unity-catalog"
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE="$SERVER_DIR/opensharing-server-core/src/test/resources/delta-table/stocked"
@@ -82,8 +83,13 @@ else
   note "Delta fixture: 5 rows in 2 partitions"
 fi
 
-step "Configuring Unity Catalog (embedded OpenSharing on port $OS_PORT)"
-# Embedded OpenSharing has no datasource config of its own: it reads UC's own
+step "Configuring Unity Catalog (embedded OpenSharing routed through port $UC_PORT)"
+# One public port: UC's own URLTranscoderVerticle forwards a request under protocol-prefix,
+# admin-base-path or activation-base-path to OpenSharing's own port instead of UC's, so a client
+# never needs to know a second port exists. That internal port is bound to 127.0.0.1 — nothing
+# reaches it except the transcoder on this same host.
+#
+# Embedded OpenSharing has no datasource config of its own either: it reads UC's own
 # etc/conf/hibernate.properties (hibernate.connection.url/username/password/driver_class) and
 # connects to that same database. Safe within one JVM (H2 keeps one shared in-memory Database
 # instance per canonical file path per process; a real database server is designed for exactly
@@ -92,9 +98,11 @@ cat > "$DEMO_HOME/etc/conf/server.properties" <<PROPERTIES
 server.env=dev
 server.authorization=disable
 server.opensharing.enabled=true
-server.opensharing.port=$OS_PORT
+server.opensharing.port=$OS_INTERNAL_PORT
 server.opensharing.protocol-prefix=/api/2.1/unity-catalog/sharing
-server.opensharing.external-base-url=http://localhost:$OS_PORT
+server.opensharing.admin-base-path=/api/admin/v1
+server.opensharing.activation-base-path=/activation
+server.opensharing.external-base-url=http://localhost:$UC_PORT
 server.opensharing.credential-encryption-key=$CREDENTIAL_KEY
 server.opensharing.principal-name=$PROVIDER
 PROPERTIES
@@ -108,7 +116,7 @@ hibernate.archive.autodetection=class
 PROPERTIES
 note "one H2 file at $DEMO_HOME/etc/db/h2db, shared by UC and embedded OpenSharing"
 
-step "Starting Unity Catalog + embedded OpenSharing"
+step "Starting Unity Catalog + embedded OpenSharing, both on port $UC_PORT"
 if curl -s -o /dev/null -m 2 "$UC_URI/catalogs"; then
   note "something already answers on $UC_PORT, leaving it alone"
 else
@@ -121,14 +129,16 @@ else
   )
   for _ in $(seq 90); do
     curl -s -o /dev/null -m 2 "$UC_URI/catalogs" \
-      && curl -s -o /dev/null -m 2 "http://localhost:$OS_PORT/api/admin/v1/shares" \
+      && curl -s -o /dev/null -m 2 "http://localhost:$UC_PORT/api/admin/v1/shares" \
         -H "Authorization: Bearer demo" \
       && break
     sleep 2
   done
   curl -s -o /dev/null -m 2 "$UC_URI/catalogs" \
     || { echo "UC did not come up; see $DEMO_HOME/unity-catalog.log" >&2; exit 1; }
-  curl -s -o /dev/null -m 2 "http://localhost:$OS_PORT/api/admin/v1/shares" \
+  # This is the same port UC itself just answered on: proof the transcoder is routing
+  # /api/admin/v1 to embedded OpenSharing rather than to Armeria, which knows no such path.
+  curl -s -o /dev/null -m 2 "http://localhost:$UC_PORT/api/admin/v1/shares" \
     -H "Authorization: Bearer demo" \
     || { echo "OpenSharing did not come up; see $DEMO_HOME/unity-catalog.log" >&2; exit 1; }
   note "pid $(cat "$DEMO_HOME/unity-catalog.pid"), log at $DEMO_HOME/unity-catalog.log"
@@ -164,28 +174,33 @@ uc GET /tables/main.sales.orders \
 
 cat > "$DEMO_HOME/demo.env" <<ENV
 # Written by demo-embedded-up.sh; sourced by demo-embedded.sh
+# One port for everything: UC and OpenSharing are the same process and the same address.
 UC_URI=$UC_URI
 UC_PORT=$UC_PORT
-OS_PORT=$OS_PORT
-SERVER=http://localhost:$OS_PORT
-ADMIN=http://localhost:$OS_PORT/api/admin/v1
-PROTOCOL=http://localhost:$OS_PORT/api/2.1/unity-catalog/sharing
+OS_INTERNAL_PORT=$OS_INTERNAL_PORT
+SERVER=http://localhost:$UC_PORT
+ADMIN=http://localhost:$UC_PORT/api/admin/v1
+PROTOCOL=http://localhost:$UC_PORT/api/2.1/unity-catalog/sharing
 PROVIDER=$PROVIDER
 PROVIDER_TOKEN=demo-provider-token
 DEMO_DATA=$DEMO_HOME/data
 ENV
 
 step "Ready"
-ADMIN_URL="http://localhost:$OS_PORT/api/admin/v1"
-PROTOCOL_URL="http://localhost:$OS_PORT/api/2.1/unity-catalog/sharing"
+ADMIN_URL="http://localhost:$UC_PORT/api/admin/v1"
+PROTOCOL_URL="http://localhost:$UC_PORT/api/2.1/unity-catalog/sharing"
 cat <<NEXT
 
   source $DEMO_HOME/demo.env
   $SERVER_DIR/scripts/demo-embedded.sh
 
-  Provider admin:  $ADMIN_URL  (Authorization: Bearer \$PROVIDER_TOKEN)
-  Protocol base:   $PROTOCOL_URL
-  Unity Catalog:   $UC_URI
+  One address for both — dispatched by URL path, not by port:
+    Unity Catalog:   $UC_URI
+    Provider admin:  $ADMIN_URL  (Authorization: Bearer \$PROVIDER_TOKEN)
+    Protocol base:   $PROTOCOL_URL
+
+  OpenSharing's own port ($OS_INTERNAL_PORT) is internal — bound to 127.0.0.1, reached only
+  through $UC_PORT above.
 
   Stop:  kill \$(cat $DEMO_HOME/unity-catalog.pid)
   Reset: rm -rf $DEMO_HOME

@@ -97,6 +97,32 @@ OpenSharing.embedded()
 Recipient protocol endpoints, share metadata (JPA), credential vending, and Delta/Iceberg serving
 stay in OpenSharing. Only catalog access and provider authentication are delegated to the host.
 
+## One process, one address
+
+Embedding does not mean sharing a port automatically — UC's own gRPC-JSON transcoding server
+(Armeria) and OpenSharing's embedded Tomcat are unrelated server engines that each bind their own
+socket, and a TCP port can only have one listener regardless of how many frameworks share a JVM.
+What makes it feel like one server to a client is UC's own public-facing listener (the Vert.x
+`URLTranscoderVerticle` that already sits in front of Armeria) forwarding a request to whichever
+backend its path belongs to:
+
+```
+client → UC's public port (e.g. 8080)
+              │
+              ├─ path under opensharing.protocol-prefix / admin-base-path / activation-base-path
+              │      → embedded OpenSharing, on its own port, bound to 127.0.0.1
+              │
+              └─ everything else
+                     → UC's own Armeria server, on port+1
+```
+
+OpenSharing's own port is real (something has to bind it) but private: bound to `127.0.0.1` only,
+never advertised, reached solely by that one path-based forward on the same host. A client — and a
+recipient's activation URL / `config.share` — only ever sees UC's own public address, because
+`opensharing.activation.external-base-url` is set to that address, not to OpenSharing's internal
+port. Standalone OpenSharing (no UC in the loop) is unaffected: this routing is UC's own addition
+to its already-existing transcoder, not a change to OpenSharing itself.
+
 ## No datasource config of its own — it reads the host's
 
 OpenSharing's metadata (`os_principals`, `os_shares`, `os_shared_data_objects`, `os_recipients`,

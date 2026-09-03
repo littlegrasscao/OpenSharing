@@ -4,7 +4,7 @@
 # Prerequisite:  ./scripts/demo-embedded-up.sh
 #
 # Environment (or source demo.env written by demo-embedded-up.sh):
-#   SERVER            OpenSharing base URL                     (default http://localhost:8099)
+#   SERVER            the one address — UC's own public port  (default http://localhost:8080)
 #   ADMIN             provider admin API                       (default $SERVER/api/admin/v1)
 #   PROTOCOL          recipient protocol prefix                (default $SERVER/api/2.1/unity-catalog/sharing)
 #   PROVIDER          catalog principal the provider shares as (default admin@unitycatalog.local)
@@ -17,7 +17,7 @@ if [[ -z "${SERVER:-}" && -f "${DEMO_HOME:-$HOME/.opensharing-embedded-demo}/dem
   source "${DEMO_HOME:-$HOME/.opensharing-embedded-demo}/demo.env"
 fi
 
-SERVER="${SERVER:-http://localhost:8099}"
+SERVER="${SERVER:-http://localhost:8080}"
 ADMIN="${ADMIN:-$SERVER/api/admin/v1}"
 PROTOCOL="${PROTOCOL:-$SERVER/api/2.1/unity-catalog/sharing}"
 PROVIDER="${PROVIDER:-admin@unitycatalog.local}"
@@ -40,7 +40,7 @@ step() { printf '\n\033[1;36m== %s\033[0m\n' "$1"; }
 note() { printf '   %s\n' "$1"; }
 maybe_pause() { if [[ "${PAUSE:-}" == ask ]]; then read -r -p 'Press enter...' _; fi; }
 
-step "Unity Catalog runs with OpenSharing embedded on $SERVER"
+step "Unity Catalog and OpenSharing share one process and one address: $SERVER"
 note "provider principal is '$PROVIDER' (server.opensharing.principal-name)"
 note "admin calls authenticate with PROVIDER_TOKEN; the catalog is queried in-process"
 maybe_pause
