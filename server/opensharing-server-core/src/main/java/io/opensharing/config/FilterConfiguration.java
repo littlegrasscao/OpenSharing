@@ -31,9 +31,12 @@ public class FilterConfiguration {
             new RecipientAuthenticationFilter(
                 tokenService,
                 objectMapper,
-                // The admin and activation APIs may be mounted under the protocol prefix (they
-                // are, by default), which would otherwise also match this filter's URL pattern.
-                List.of(properties.getAdmin().getBasePath(), properties.getActivation().getBasePath())));
+                // The provider and activation APIs may be mounted under the protocol prefix
+                // (they are, by default), which would otherwise also match this filter's URL
+                // pattern.
+                List.of(
+                    properties.getProvider().getBasePath(),
+                    properties.getActivation().getBasePath())));
     registration.addUrlPatterns(properties.getProtocolPrefix() + "/*");
     registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
     return registration;
@@ -49,7 +52,7 @@ public class FilterConfiguration {
         new FilterRegistrationBean<>(
             new AdminAuthenticationFilter(
                 principals, objectMapper, identityResolver.getIfAvailable()));
-    registration.addUrlPatterns(properties.getAdmin().getBasePath() + "/*");
+    registration.addUrlPatterns(properties.getProvider().getBasePath() + "/*");
     registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
     return registration;
   }

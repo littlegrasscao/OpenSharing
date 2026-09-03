@@ -16,6 +16,7 @@ public class OpenSharingProperties {
   private final Hosting hosting = new Hosting();
 
   private final Admin admin = new Admin();
+  private final Provider provider = new Provider();
   private final Security security = new Security();
   private final Activation activation = new Activation();
   private final RecipientTokens recipientTokens = new RecipientTokens();
@@ -50,6 +51,10 @@ public class OpenSharingProperties {
 
   public Admin getAdmin() {
     return admin;
+  }
+
+  public Provider getProvider() {
+    return provider;
   }
 
   public Security getSecurity() {
@@ -110,25 +115,14 @@ public class OpenSharingProperties {
     }
   }
 
-  /** Provider-admin API settings. */
+  /** Provider principals recognized at startup. See {@link Provider} for the API's own settings. */
   public static class Admin {
-
-    /** URL prefix for the provider-admin API. */
-    private String basePath = "/api/2.1/opensharing/provider";
 
     /**
      * Provider principals the server recognizes. Each entry is registered in the database at startup,
      * and its bearer token is both the admin login and the credential presented to the catalog.
      */
     private List<Principal> principals = List.of();
-
-    public String getBasePath() {
-      return basePath;
-    }
-
-    public void setBasePath(String basePath) {
-      this.basePath = prefix(basePath);
-    }
 
     public List<Principal> getPrincipals() {
       return principals;
@@ -168,6 +162,21 @@ public class OpenSharingProperties {
       public void setType(PrincipalType type) {
         this.type = type;
       }
+    }
+  }
+
+  /** Provider-admin API settings. */
+  public static class Provider {
+
+    /** URL prefix for the provider-admin API. */
+    private String basePath = "/api/2.1/opensharing/provider";
+
+    public String getBasePath() {
+      return basePath;
+    }
+
+    public void setBasePath(String basePath) {
+      this.basePath = prefix(basePath);
     }
   }
 

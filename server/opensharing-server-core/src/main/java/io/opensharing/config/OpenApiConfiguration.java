@@ -77,7 +77,7 @@ public class OpenApiConfiguration {
 
   /**
    * The protocol a recipient calls, mounted wherever {@code protocol-prefix} points. Excludes the
-   * admin and activation APIs explicitly: by default they are mounted underneath the protocol
+   * provider and activation APIs explicitly: by default they are mounted underneath the protocol
    * prefix too ({@code /api/2.1/opensharing/provider}, {@code /api/2.1/opensharing/activation}
    * under {@code /api/2.1/opensharing}), which {@code pathsToMatch} alone cannot tell apart from the
    * protocol's own routes.
@@ -89,7 +89,7 @@ public class OpenApiConfiguration {
         .displayName("Recipient protocol")
         .pathsToMatch(properties.getProtocolPrefix() + "/**")
         .pathsToExclude(
-            properties.getAdmin().getBasePath() + "/**",
+            properties.getProvider().getBasePath() + "/**",
             properties.getActivation().getBasePath() + "/**")
         .addOpenApiCustomizer(api -> api.addSecurityItem(requirement(RECIPIENT_TOKEN)))
         .build();
@@ -101,7 +101,7 @@ public class OpenApiConfiguration {
     return GroupedOpenApi.builder()
         .group("admin")
         .displayName("Provider admin")
-        .pathsToMatch(properties.getAdmin().getBasePath() + "/**")
+        .pathsToMatch(properties.getProvider().getBasePath() + "/**")
         .addOpenApiCustomizer(api -> api.addSecurityItem(requirement(PRINCIPAL_TOKEN)))
         .build();
   }

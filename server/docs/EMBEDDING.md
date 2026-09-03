@@ -109,7 +109,7 @@ backend its path belongs to:
 ```
 client → UC's public port (e.g. 8080)
               │
-              ├─ path under opensharing.protocol-prefix / admin-base-path / activation-base-path
+              ├─ path under opensharing.protocol-prefix / provider-base-path / activation-base-path
               │      → embedded OpenSharing, on its own port, bound to 127.0.0.1
               │
               └─ everything else

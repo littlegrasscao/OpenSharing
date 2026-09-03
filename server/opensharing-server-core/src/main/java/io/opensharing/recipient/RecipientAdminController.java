@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Provider-admin API for recipients, their bearer tokens, and the shares they can read. */
 @RestController
-@RequestMapping("${opensharing.admin.base-path}/recipients")
+@RequestMapping("${opensharing.provider.base-path}/recipients")
 public class RecipientAdminController {
 
   private final RecipientStore recipients;

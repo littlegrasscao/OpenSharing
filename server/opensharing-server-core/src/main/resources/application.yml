@@ -35,10 +35,11 @@ opensharing:
     # embedded: host registers a CatalogConnector bean (see io.opensharing.runtime.OpenSharing).
     mode: standalone
   admin:
-    base-path: /api/2.1/opensharing/provider
     # Provider principals provisioned at startup. Each bearer token is also the credential the
     # catalog is asked with as that principal.
     principals: []
+  provider:
+    base-path: /api/2.1/opensharing/provider
   security:
     # Base64 AES key (16, 24 or 32 bytes) that a principal's catalog credential is encrypted with, so
     # the server can present it to the catalog while serving a recipient. Belongs in an environment

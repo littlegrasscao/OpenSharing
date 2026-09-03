@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Provider-admin API for shares, their contents, and the permissions recipients hold on them. */
 @RestController
-@RequestMapping("${opensharing.admin.base-path}/shares")
+@RequestMapping("${opensharing.provider.base-path}/shares")
 public class ShareAdminController {
 
   private final ShareStore shares;

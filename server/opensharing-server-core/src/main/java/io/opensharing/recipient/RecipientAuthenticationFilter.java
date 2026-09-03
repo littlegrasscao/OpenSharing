@@ -21,13 +21,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Authenticates protocol requests as a recipient using its bearer token, and holds the request to the
  * recipient's IP access list.
  *
- * <p>{@code excludedPathPrefixes} matters because the admin and activation APIs may be mounted
+ * <p>{@code excludedPathPrefixes} matters because the provider and activation APIs may be mounted
  * under the protocol prefix itself (e.g. {@code protocol-prefix} of {@code /api/2.1/opensharing}
- * with {@code admin.base-path} of {@code /api/2.1/opensharing/provider}), which is registered as a
- * servlet URL pattern of its own but is <em>also</em> a match for this filter's broader one. Without
- * the exclusion, this filter would run on every admin and activation request too, and reject them
- * for lacking a recipient token before the filter that actually knows how to authenticate them —
- * or, for activation, any filter at all — gets a chance to.
+ * with {@code provider.base-path} of {@code /api/2.1/opensharing/provider}), which is registered
+ * as a servlet URL pattern of its own but is <em>also</em> a match for this filter's broader one.
+ * Without the exclusion, this filter would run on every provider and activation request too, and
+ * reject them for lacking a recipient token before the filter that actually knows how to
+ * authenticate them — or, for activation, any filter at all — gets a chance to.
  */
 public class RecipientAuthenticationFilter extends OncePerRequestFilter {
 

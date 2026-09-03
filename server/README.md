@@ -383,7 +383,7 @@ All list endpoints accept `maxResults` and `pageToken` and return `{items, nextP
 
 ### Provider-admin endpoints (`Authorization: Bearer <principal's token>`)
 
-Mounted under `opensharing.admin.base-path`, default `/api/2.1/opensharing/provider`. Bodies are
+Mounted under `opensharing.provider.base-path`, default `/api/2.1/opensharing/provider`. Bodies are
 snake_case. Any principal may read; a `PATCH`, `DELETE` or `rotate-token` on a share or a recipient
 is refused unless the caller owns it.
 
@@ -545,14 +545,14 @@ holds is described under the protocol endpoints above.
 ## Configuration
 
 Everything lives under the `opensharing` prefix in `src/main/resources/application.yml`. Any key can be
-overridden without editing the file, either as `--opensharing.admin.base-path=/admin` on the command
-line or as the upper-case underscored form of the same path in the environment, so
+overridden without editing the file, either as `--opensharing.provider.base-path=/provider` on the
+command line or as the upper-case underscored form of the same path in the environment, so
 `opensharing.admin.principals` is `OPENSHARING_ADMIN_PRINCIPALS_0_NAME` and `OPENSHARING_ADMIN_PRINCIPALS_0_BEARER_TOKEN` for indexed entries.
 
 | Key | Default | Purpose |
 |---|---|---|
 | `protocol-prefix` | `/api/2.1/opensharing` | Prefix for protocol endpoints; also what goes in the profile file. |
-| `admin.base-path` | `/api/2.1/opensharing/provider` | Prefix for the provider-admin API. |
+| `provider.base-path` | `/api/2.1/opensharing/provider` | Prefix for the provider-admin API. |
 | `admin.principals` | `[]` | Usernames and bearer tokens provisioned at startup. Each token is both the admin login and the catalog credential. |
 | `security.credential-encryption-key` | blank | Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the catalog can be asked as them later. Required: blank means no principal can be provisioned. Keep it out of the database's reach: an environment variable, a mounted secret, a KMS. |
 | `activation.base-path` | `/api/2.1/opensharing/activation` | Prefix the single-use activation endpoint is served under. |

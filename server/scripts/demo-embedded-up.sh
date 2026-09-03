@@ -85,9 +85,9 @@ fi
 
 step "Configuring Unity Catalog (embedded OpenSharing routed through port $UC_PORT)"
 # One public port: UC's own URLTranscoderVerticle forwards a request under protocol-prefix,
-# admin-base-path or activation-base-path to OpenSharing's own port instead of UC's, so a client
-# never needs to know a second port exists. That internal port is bound to 127.0.0.1 — nothing
-# reaches it except the transcoder on this same host.
+# provider-base-path or activation-base-path to OpenSharing's own port instead of UC's, so a
+# client never needs to know a second port exists. That internal port is bound to 127.0.0.1 —
+# nothing reaches it except the transcoder on this same host.
 #
 # Embedded OpenSharing has no datasource config of its own either: it reads UC's own
 # etc/conf/hibernate.properties (hibernate.connection.url/username/password/driver_class) and
@@ -100,7 +100,7 @@ server.authorization=disable
 server.opensharing.enabled=true
 server.opensharing.port=$OS_INTERNAL_PORT
 server.opensharing.protocol-prefix=/api/2.1/opensharing
-server.opensharing.admin-base-path=/api/2.1/opensharing/provider
+server.opensharing.provider-base-path=/api/2.1/opensharing/provider
 server.opensharing.activation-base-path=/api/2.1/opensharing/activation
 server.opensharing.external-base-url=http://localhost:$UC_PORT
 server.opensharing.credential-encryption-key=$CREDENTIAL_KEY
