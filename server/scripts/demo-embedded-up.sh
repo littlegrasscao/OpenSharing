@@ -84,10 +84,12 @@ else
 fi
 
 step "Configuring Unity Catalog (embedded OpenSharing routed through port $UC_PORT)"
-# One public port: UC's own URLTranscoderVerticle forwards a request under protocol-prefix,
-# provider-base-path or activation-base-path to OpenSharing's own port instead of UC's, so a
-# client never needs to know a second port exists. That internal port is bound to 127.0.0.1 —
-# nothing reaches it except the transcoder on this same host.
+# One public port: UC's own URLTranscoderVerticle forwards a request under protocol-prefix (and
+# the /provider, /activation paths derived from it) to OpenSharing's own port instead of UC's, so
+# a client never needs to know a second port exists. That internal port is bound to 127.0.0.1 —
+# nothing reaches it except the transcoder on this same host. The external address a recipient's
+# activation link and config.share point at is derived from UC's own public port too, not
+# configured separately.
 #
 # Embedded OpenSharing has no datasource config of its own either: it reads UC's own
 # etc/conf/hibernate.properties (hibernate.connection.url/username/password/driver_class) and
@@ -100,11 +102,7 @@ server.authorization=disable
 server.opensharing.enabled=true
 server.opensharing.port=$OS_INTERNAL_PORT
 server.opensharing.protocol-prefix=/api/2.1/opensharing
-server.opensharing.provider-base-path=/api/2.1/opensharing/provider
-server.opensharing.activation-base-path=/api/2.1/opensharing/activation
-server.opensharing.external-base-url=http://localhost:$UC_PORT
 server.opensharing.credential-encryption-key=$CREDENTIAL_KEY
-server.opensharing.principal-name=$PROVIDER
 PROPERTIES
 cat > "$DEMO_HOME/etc/conf/hibernate.properties" <<'PROPERTIES'
 hibernate.connection.driver_class=org.h2.Driver
@@ -173,6 +171,15 @@ uc POST /tables "$(cat "$DEMO_HOME/orders-table.json")" >/dev/null || true
 uc GET /tables/main.sales.orders \
   | jq -c '{full_name:"main.sales.orders",table_type,data_source_format,storage_location}'
 
+step "Minting the provider's token"
+# Authorization is disabled in this demo, so nothing verifies this token's signature — the
+# provider-admin caller is simply whoever presents it. Minting a real JWT (rather than an
+# arbitrary string) with subject $PROVIDER means OpenSharing attributes shares and grants to
+# that name, without any UC-side config saying so: see UnityCatalogProviderIdentityResolver.
+PROVIDER_TOKEN="$(java -cp "$(embedded_classpath)" "$SERVER_DIR/scripts/MintToken.java" \
+  "$DEMO_HOME/etc/conf" "$PROVIDER")"
+note "signed by UC's own key, subject '$PROVIDER'"
+
 cat > "$DEMO_HOME/demo.env" <<ENV
 # Written by demo-embedded-up.sh; sourced by demo-embedded.sh
 # One port for everything: UC and OpenSharing are the same process and the same address.
@@ -183,7 +190,7 @@ SERVER=http://localhost:$UC_PORT
 ADMIN=http://localhost:$UC_PORT/api/2.1/opensharing/provider
 PROTOCOL=http://localhost:$UC_PORT/api/2.1/opensharing
 PROVIDER=$PROVIDER
-PROVIDER_TOKEN=demo-provider-token
+PROVIDER_TOKEN=$PROVIDER_TOKEN
 DEMO_DATA=$DEMO_HOME/data
 ENV
 

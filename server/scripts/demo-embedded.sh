@@ -8,7 +8,9 @@
 #   ADMIN             provider admin API                       (default $SERVER/api/2.1/opensharing/provider)
 #   PROTOCOL          recipient protocol prefix                (default $SERVER/api/2.1/opensharing)
 #   PROVIDER          catalog principal the provider shares as (default admin@unitycatalog.local)
-#   PROVIDER_TOKEN    bearer token for admin calls             (default demo-provider-token)
+#   PROVIDER_TOKEN    bearer token for admin calls; a JWT minted for $PROVIDER by
+#                     demo-embedded-up.sh, whose subject is what the provider is attributed as
+#                     (default: a plain string, attributed under that string verbatim)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,7 +43,8 @@ note() { printf '   %s\n' "$1"; }
 maybe_pause() { if [[ "${PAUSE:-}" == ask ]]; then read -r -p 'Press enter...' _; fi; }
 
 step "Unity Catalog and OpenSharing share one process and one address: $SERVER"
-note "provider principal is '$PROVIDER' (server.opensharing.principal-name)"
+note "provider principal is '$PROVIDER' — the subject of PROVIDER_TOKEN's own JWT, not a"
+note "  name configured on UC's side (authorization is disabled; nothing verifies it)"
 note "admin calls authenticate with PROVIDER_TOKEN; the catalog is queried in-process"
 maybe_pause
 

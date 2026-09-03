@@ -139,8 +139,8 @@ backend its path belongs to:
 ```
 client → UC's public port (e.g. 8080)
               │
-              ├─ path under opensharing.protocol-prefix / provider-base-path / activation-base-path
-              │      → embedded OpenSharing, on its own port, bound to 127.0.0.1
+              ├─ path under opensharing.protocol-prefix (and the /provider, /activation paths
+              │  derived from it) → embedded OpenSharing, on its own port, bound to 127.0.0.1
               │
               └─ everything else
                      → UC's own Armeria server, on port+1
@@ -149,7 +149,8 @@ client → UC's public port (e.g. 8080)
 OpenSharing's own port is real (something has to bind it) but private: bound to `127.0.0.1` only,
 never advertised, reached solely by that one path-based forward on the same host. A client — and a
 recipient's activation URL / `config.share` — only ever sees UC's own public address, because
-`opensharing.activation.external-base-url` is set to that address, not to OpenSharing's internal
+`OpenSharingLifecycle` sets `opensharing.activation.external-base-url` to that address (derived
+from UC's own public port, not a value configured separately) rather than to OpenSharing's internal
 port. Standalone OpenSharing (no UC in the loop) is unaffected: this routing is UC's own addition
 to its already-existing transcoder, not a change to OpenSharing itself.
 
