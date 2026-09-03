@@ -97,6 +97,33 @@ OpenSharing.embedded()
 Recipient protocol endpoints, share metadata (JPA), credential vending, and Delta/Iceberg serving
 stay in OpenSharing. Only catalog access and provider authentication are delegated to the host.
 
+## Sharing UC's own database
+
+OpenSharing's metadata (`principals`, `shares`, `shared_data_objects`, `recipients`,
+`recipient_tokens`, `share_permissions`) is stored via its own JPA/Hibernate model, independent of
+the host's schema. Nothing requires a separate database file for it, though: point
+`server.opensharing.datasource.url` (or `spring.datasource.url` directly) at the exact same JDBC
+URL the host already uses for its own metadata, and both sides' tables land in one physical
+database — safe within a single JVM, since none of OpenSharing's table names collide with UC's
+`uc_`-prefixed ones. The demo scripts do this by default: `demo-embedded-up.sh` points OpenSharing
+at UC's own `etc/db/h2db`, so `rm -rf $DEMO_HOME` is the only reset step, not two.
+
+Two things to get right when consolidating onto H2:
+
+- **Matching credentials, before the first connect.** H2 creates its database's admin user from
+  whichever username/password the *first* connection presents; if the host's Hibernate config
+  doesn't set `hibernate.connection.username`/`password` explicitly, that first connection uses an
+  empty username, and a second connection pool (OpenSharing's Spring datasource, which defaults to
+  `sa`/blank) fails with `Wrong user name or password`. Set both sides' credentials explicitly and
+  identically — `sa`/blank is fine for a demo.
+- **Two connection pools, not one transaction.** This shares a database file, not a Hibernate
+  `SessionFactory`/`EntityManagerFactory` or a JDBC connection. A single logical operation that
+  touches both UC's tables and OpenSharing's (e.g. resolving a table while creating a share) still
+  runs as two independent local transactions — there is no 2PC/XA coordination between them. For a
+  demo/single-node deployment this is an acceptable simplification (SQLite/H2-style embedded stores
+  don't usually need cross-service atomicity); it is not a substitute for real distributed
+  transactions if that ever matters.
+
 ## What the host implements
 
 ### `CatalogConnector`

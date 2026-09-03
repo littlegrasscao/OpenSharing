@@ -83,6 +83,12 @@ else
 fi
 
 step "Configuring Unity Catalog (embedded OpenSharing on port $OS_PORT)"
+# Both UC and OpenSharing point at the same H2 file. Safe within one JVM (H2 keeps one shared
+# in-memory Database instance per canonical file path per process) and keeps a single database to
+# back up/inspect: OpenSharing's tables (principals, shares, shared_data_objects, recipients,
+# recipient_tokens, share_permissions) don't collide with UC's uc_*-prefixed ones, and each side
+# updates only the tables its own JPA/Hibernate model knows about.
+UC_DB_URL="jdbc:h2:file:./etc/db/h2db;DB_CLOSE_DELAY=-1"
 cat > "$DEMO_HOME/etc/conf/server.properties" <<PROPERTIES
 server.env=dev
 server.authorization=disable
@@ -90,19 +96,21 @@ server.opensharing.enabled=true
 server.opensharing.port=$OS_PORT
 server.opensharing.protocol-prefix=/api/2.1/unity-catalog/sharing
 server.opensharing.external-base-url=http://localhost:$OS_PORT
-server.opensharing.datasource.url=jdbc:h2:file:./data/opensharing;AUTO_SERVER=TRUE
+server.opensharing.datasource.url=$UC_DB_URL
 server.opensharing.credential-encryption-key=$CREDENTIAL_KEY
 server.opensharing.principal-name=$PROVIDER
 PROPERTIES
-cat > "$DEMO_HOME/etc/conf/hibernate.properties" <<'PROPERTIES'
+cat > "$DEMO_HOME/etc/conf/hibernate.properties" <<PROPERTIES
 hibernate.connection.driver_class=org.h2.Driver
-hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_DELAY=-1
+hibernate.connection.url=$UC_DB_URL
+hibernate.connection.username=sa
+hibernate.connection.password=
 hibernate.dialect=org.hibernate.dialect.H2Dialect
 hibernate.hbm2ddl.auto=update
 hibernate.show_sql=false
 hibernate.archive.autodetection=class
 PROPERTIES
-note "UC public port $UC_PORT; sharing admin and protocol on $OS_PORT"
+note "one H2 file at $DEMO_HOME/etc/db/h2db, shared by UC and embedded OpenSharing"
 
 step "Starting Unity Catalog + embedded OpenSharing"
 if curl -s -o /dev/null -m 2 "$UC_URI/catalogs"; then
