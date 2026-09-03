@@ -6,6 +6,7 @@ import io.opensharing.http.ErrorResponse;
 import io.opensharing.principal.Caller;
 import io.opensharing.principal.PrincipalEntity;
 import io.opensharing.principal.PrincipalStore;
+import io.opensharing.principal.PrincipalType;
 import io.opensharing.runtime.ProviderIdentityResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -49,7 +50,7 @@ public class AdminAuthenticationFilter extends OncePerRequestFilter {
     if (identityResolver != null) {
       Optional<Caller> resolved = identityResolver.resolve(request);
       if (resolved.isPresent()) {
-        request.setAttribute(Caller.REQUEST_ATTRIBUTE, resolved.get());
+        request.setAttribute(Caller.REQUEST_ATTRIBUTE, provisioned(resolved.get()));
         chain.doFilter(request, response);
         return;
       }
@@ -66,6 +67,18 @@ public class AdminAuthenticationFilter extends OncePerRequestFilter {
     }
     request.setAttribute(Caller.REQUEST_ATTRIBUTE, Caller.of(principal.get(), presented.get()));
     chain.doFilter(request, response);
+  }
+
+  /**
+   * The host resolves a principal's identity, not its row in this server's own store. Provisioning
+   * it here — same as a configured {@code opensharing.admin.principals} entry — is what lets {@link
+   * io.opensharing.principal.PrincipalStore#require} find it by id later in the same request, and
+   * keeps its stored catalog credential current with whatever the host just presented.
+   */
+  private Caller provisioned(Caller resolved) {
+    PrincipalEntity principal =
+        principals.provision(PrincipalType.USER, resolved.name(), resolved.bearerToken());
+    return Caller.of(principal, resolved.bearerToken());
   }
 
   private void reject(HttpServletResponse response, String message) throws IOException {

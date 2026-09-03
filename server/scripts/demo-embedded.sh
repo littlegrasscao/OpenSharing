@@ -38,7 +38,7 @@ admin() {
 
 step() { printf '\n\033[1;36m== %s\033[0m\n' "$1"; }
 note() { printf '   %s\n' "$1"; }
-maybe_pause() { [[ "${PAUSE:-}" == ask ]] && read -r -p 'Press enter...' _; }
+maybe_pause() { if [[ "${PAUSE:-}" == ask ]]; then read -r -p 'Press enter...' _; fi; }
 
 step "Unity Catalog runs with OpenSharing embedded on $SERVER"
 note "provider principal is '$PROVIDER' (server.opensharing.principal-name)"

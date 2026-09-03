@@ -49,7 +49,9 @@ if [[ -z "${MVN_SETTINGS:-}" && -f "$SERVER_DIR/.mvn/local-mirror-settings.xml" 
   MVN_SETTINGS="$SERVER_DIR/.mvn/local-mirror-settings.xml"
 fi
 MVN_CMD=(mvn -q)
-[[ -n "${MVN_SETTINGS:-}" ]] && MVN_CMD+=(-s "$MVN_SETTINGS")
+if [[ -n "${MVN_SETTINGS:-}" ]]; then
+  MVN_CMD+=(-s "$MVN_SETTINGS")
+fi
 
 if [[ -z "${MAVEN_PROXY_URL:-}" ]]; then
   export MAVEN_PROXY_URL=https://maven-proxy.dev.databricks.com
@@ -170,13 +172,15 @@ DEMO_DATA=$DEMO_HOME/data
 ENV
 
 step "Ready"
+ADMIN_URL="http://localhost:$OS_PORT/api/admin/v1"
+PROTOCOL_URL="http://localhost:$OS_PORT/api/2.1/unity-catalog/sharing"
 cat <<NEXT
 
   source $DEMO_HOME/demo.env
   $SERVER_DIR/scripts/demo-embedded.sh
 
-  Provider admin:  $ADMIN  (Authorization: Bearer \$PROVIDER_TOKEN)
-  Protocol base:   $PROTOCOL
+  Provider admin:  $ADMIN_URL  (Authorization: Bearer \$PROVIDER_TOKEN)
+  Protocol base:   $PROTOCOL_URL
   Unity Catalog:   $UC_URI
 
   Stop:  kill \$(cat $DEMO_HOME/unity-catalog.pid)
