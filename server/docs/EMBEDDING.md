@@ -90,7 +90,7 @@ The host supplies two integration points:
 OpenSharing.embedded()
     .catalog(new UnityCatalogEmbeddedConnector(ucRepositories, credentialVendor))
     .identityResolver(request -> Optional.of(ucPrincipalToCaller(ucContext)))
-  .property("opensharing.protocol-prefix", "/api/2.1/unity-catalog/sharing")
+  .property("opensharing.protocol-prefix", "/api/2.1/opensharing")
   .run();
 ```
 
@@ -212,7 +212,9 @@ PAUSE=ask ./scripts/demo-embedded.sh
 
 `demo-embedded-up.sh` runs `mvn install` for `opensharing-server-core`, then
 `sbt serverEmbedded/exportEmbeddedClasspath` in UC. Unity Catalog listens on `UC_PORT` (default
-8080); embedded OpenSharing serves admin and protocol on `OS_PORT` (default 8099).
+8080), and embedded OpenSharing's admin and protocol APIs answer there too — see "One process, one
+address" above. `OS_INTERNAL_PORT` (default 8099) is OpenSharing's own port, bound to `127.0.0.1`
+and not meant to be reached directly.
 
 For the two-process demo (released UC jar + standalone OpenSharing), use `demo-unity-up.sh` and
 `demo.sh` instead.

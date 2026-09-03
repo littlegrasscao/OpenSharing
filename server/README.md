@@ -235,8 +235,8 @@ Then walk through the whole provider-to-recipient flow (requires `jq`):
 
 ### Protocol endpoints (recipient, `Authorization: Bearer <token>`)
 
-Mounted under `opensharing.protocol-prefix`, default `/opensharing`. Every route below is declared in
-`RecipientApi` and served from the `serving` package.
+Mounted under `opensharing.protocol-prefix`, default `/api/2.1/opensharing`. Every route below is
+declared in `RecipientApi` and served from the `serving` package.
 
 ```
 GET  /shares
@@ -383,9 +383,9 @@ All list endpoints accept `maxResults` and `pageToken` and return `{items, nextP
 
 ### Provider-admin endpoints (`Authorization: Bearer <principal's token>`)
 
-Mounted under `opensharing.admin.base-path`, default `/api/admin/v1`. Bodies are snake_case. Any
-principal may read; a `PATCH`, `DELETE` or `rotate-token` on a share or a recipient is refused unless
-the caller owns it.
+Mounted under `opensharing.admin.base-path`, default `/api/2.1/opensharing/provider`. Bodies are
+snake_case. Any principal may read; a `PATCH`, `DELETE` or `rotate-token` on a share or a recipient
+is refused unless the caller owns it.
 
 ```
 POST   /shares                                      create a share
@@ -516,7 +516,7 @@ is waiting.
 ### Activation (unauthenticated, single use)
 
 ```
-GET /activation/{nonce}    ->  config.share profile file
+GET /api/2.1/opensharing/activation/{nonce}    ->  config.share profile file
 ```
 
 ### The API described (unauthenticated)
@@ -551,11 +551,11 @@ line or as the upper-case underscored form of the same path in the environment, 
 
 | Key | Default | Purpose |
 |---|---|---|
-| `protocol-prefix` | `/opensharing` | Prefix for protocol endpoints; also what goes in the profile file. |
-| `admin.base-path` | `/api/admin/v1` | Prefix for the provider-admin API. |
+| `protocol-prefix` | `/api/2.1/opensharing` | Prefix for protocol endpoints; also what goes in the profile file. |
+| `admin.base-path` | `/api/2.1/opensharing/provider` | Prefix for the provider-admin API. |
 | `admin.principals` | `[]` | Usernames and bearer tokens provisioned at startup. Each token is both the admin login and the catalog credential. |
 | `security.credential-encryption-key` | blank | Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the catalog can be asked as them later. Required: blank means no principal can be provisioned. Keep it out of the database's reach: an environment variable, a mounted secret, a KMS. |
-| `activation.base-path` | `/activation` | Prefix the single-use activation endpoint is served under. |
+| `activation.base-path` | `/api/2.1/opensharing/activation` | Prefix the single-use activation endpoint is served under. |
 | `activation.external-base-url` | `http://localhost:8080` | Public base URL used to build activation URLs and the profile endpoint. |
 | `activation.ttl` | `72h` | How long an unused activation link stays valid. |
 | `recipient-tokens.default-ttl` | `90d` | Token lifetime when none is given; blank means never expires. |

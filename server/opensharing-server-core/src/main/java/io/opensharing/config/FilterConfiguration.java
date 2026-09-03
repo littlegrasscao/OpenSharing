@@ -7,6 +7,7 @@ import io.opensharing.recipient.RecipientAuthenticationFilter;
 import io.opensharing.recipient.RecipientTokenService;
 import io.opensharing.runtime.ProviderIdentityResolver;
 import org.springframework.beans.factory.ObjectProvider;
+import java.util.List;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,7 +28,12 @@ public class FilterConfiguration {
       OpenSharingProperties properties) {
     FilterRegistrationBean<RecipientAuthenticationFilter> registration =
         new FilterRegistrationBean<>(
-            new RecipientAuthenticationFilter(tokenService, objectMapper));
+            new RecipientAuthenticationFilter(
+                tokenService,
+                objectMapper,
+                // The admin and activation APIs may be mounted under the protocol prefix (they
+                // are, by default), which would otherwise also match this filter's URL pattern.
+                List.of(properties.getAdmin().getBasePath(), properties.getActivation().getBasePath())));
     registration.addUrlPatterns(properties.getProtocolPrefix() + "/*");
     registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
     return registration;

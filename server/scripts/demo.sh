@@ -17,8 +17,8 @@
 set -euo pipefail
 
 SERVER="${SERVER:-http://localhost:8080}"
-ADMIN="$SERVER/api/admin/v1"
-PROTOCOL="$SERVER/opensharing"
+ADMIN="$SERVER/api/2.1/opensharing/provider"
+PROTOCOL="$SERVER/api/2.1/opensharing"
 
 ALICE="alice@example.com"
 # Alice's one secret: it authenticates her to this server, and this server to the catalog as her when

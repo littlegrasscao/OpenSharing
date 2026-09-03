@@ -5,8 +5,8 @@
 #
 # Environment (or source demo.env written by demo-embedded-up.sh):
 #   SERVER            the one address — UC's own public port  (default http://localhost:8080)
-#   ADMIN             provider admin API                       (default $SERVER/api/admin/v1)
-#   PROTOCOL          recipient protocol prefix                (default $SERVER/api/2.1/unity-catalog/sharing)
+#   ADMIN             provider admin API                       (default $SERVER/api/2.1/opensharing/provider)
+#   PROTOCOL          recipient protocol prefix                (default $SERVER/api/2.1/opensharing)
 #   PROVIDER          catalog principal the provider shares as (default admin@unitycatalog.local)
 #   PROVIDER_TOKEN    bearer token for admin calls             (default demo-provider-token)
 set -euo pipefail
@@ -18,8 +18,8 @@ if [[ -z "${SERVER:-}" && -f "${DEMO_HOME:-$HOME/.opensharing-embedded-demo}/dem
 fi
 
 SERVER="${SERVER:-http://localhost:8080}"
-ADMIN="${ADMIN:-$SERVER/api/admin/v1}"
-PROTOCOL="${PROTOCOL:-$SERVER/api/2.1/unity-catalog/sharing}"
+ADMIN="${ADMIN:-$SERVER/api/2.1/opensharing/provider}"
+PROTOCOL="${PROTOCOL:-$SERVER/api/2.1/opensharing}"
 PROVIDER="${PROVIDER:-admin@unitycatalog.local}"
 PROVIDER_TOKEN="${PROVIDER_TOKEN:-demo-provider-token}"
 

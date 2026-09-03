@@ -344,20 +344,26 @@ class ProviderAdminApiTest extends ServerTestBase {
     assertEquals("TOKEN", created.get("recipient").get("auth_type").asText());
     JsonNode issued = created.get("token");
     assertTrue(
-        issued.get("activation_url").asText().startsWith("https://sharing.example.com/activation/"));
+        issued
+            .get("activation_url")
+            .asText()
+            .startsWith("https://sharing.example.com" + ACTIVATION_BASE + "/"));
     assertTrue(issued.path("bearer_token").isMissingNode(), "the token must not be returned here");
 
     String nonce = nonceOf(issued.get("activation_url").asText());
     JsonNode profile =
-        readJson(mvc.perform(get("/activation/" + nonce)).andExpect(status().isOk()).andReturn());
+        readJson(
+            mvc.perform(get(ACTIVATION_BASE + "/" + nonce)).andExpect(status().isOk()).andReturn());
     assertEquals(1, profile.get("shareCredentialsVersion").asInt());
-    assertEquals("https://sharing.example.com/opensharing", profile.get("endpoint").asText());
     assertEquals(
-        "https://sharing.example.com/opensharing/iceberg", profile.get("icebergEndpoint").asText());
+        "https://sharing.example.com" + PROTOCOL_BASE, profile.get("endpoint").asText());
+    assertEquals(
+        "https://sharing.example.com" + PROTOCOL_BASE + "/iceberg",
+        profile.get("icebergEndpoint").asText());
     assertTrue(profile.get("bearerToken").asText().startsWith("os_"));
     assertNotNull(profile.get("expirationTime").asText());
 
-    mvc.perform(get("/activation/" + nonce)).andExpect(status().isNotFound());
+    mvc.perform(get(ACTIVATION_BASE + "/" + nonce)).andExpect(status().isNotFound());
     assertTrue(adminGet("/recipients/" + name).get("tokens").get(0).get("activated").asBoolean());
   }
 
@@ -438,7 +444,7 @@ class ProviderAdminApiTest extends ServerTestBase {
 
     rotateToken(recipient);
 
-    mvc.perform(get("/activation/" + staleNonce)).andExpect(status().isNotFound());
+    mvc.perform(get(ACTIVATION_BASE + "/" + staleNonce)).andExpect(status().isNotFound());
   }
 
   @Test

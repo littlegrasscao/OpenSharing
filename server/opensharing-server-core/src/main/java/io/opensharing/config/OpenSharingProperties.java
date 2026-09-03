@@ -11,7 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class OpenSharingProperties {
 
   /** URL prefix the recipient-facing protocol endpoints are mounted under. */
-  private String protocolPrefix = "/opensharing";
+  private String protocolPrefix = "/api/2.1/opensharing";
 
   private final Hosting hosting = new Hosting();
 
@@ -114,7 +114,7 @@ public class OpenSharingProperties {
   public static class Admin {
 
     /** URL prefix for the provider-admin API. */
-    private String basePath = "/api/admin/v1";
+    private String basePath = "/api/2.1/opensharing/provider";
 
     /**
      * Provider principals the server recognizes. Each entry is registered in the database at startup,
@@ -197,7 +197,7 @@ public class OpenSharingProperties {
   /** One-time activation URLs that hand a profile file to a recipient. */
   public static class Activation {
 
-    private String basePath = "/activation";
+    private String basePath = "/api/2.1/opensharing/activation";
 
     /** How long an unused activation link stays valid. */
     private Duration ttl = Duration.ofHours(72);

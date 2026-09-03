@@ -21,8 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
       "spring.datasource.url=jdbc:h2:mem:opensharing-embedded;DB_CLOSE_DELAY=-1",
       "spring.jpa.hibernate.ddl-auto=create-drop",
       "opensharing.hosting.mode=embedded",
-      "opensharing.security.credential-encryption-key=c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=",
-      "opensharing.protocol-prefix=/opensharing"
+      "opensharing.security.credential-encryption-key=c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE="
     })
 @AutoConfigureMockMvc
 class EmbeddedOpenSharingTest {
@@ -35,7 +34,8 @@ class EmbeddedOpenSharingTest {
     assertEquals(HostingMode.EMBEDDED, runtime.hostingMode());
     assertEquals("stub", runtime.catalogConnector().name());
 
-    mvc.perform(get("/api/admin/v1/shares").header("Authorization", "Bearer host-token"))
+    mvc.perform(
+            get("/api/2.1/opensharing/provider/shares").header("Authorization", "Bearer host-token"))
         .andExpect(status().isOk());
   }
 

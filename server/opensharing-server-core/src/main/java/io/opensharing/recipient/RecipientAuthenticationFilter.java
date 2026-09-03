@@ -9,6 +9,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Authenticates protocol requests as a recipient using its bearer token, and holds the request to the
  * recipient's IP access list.
+ *
+ * <p>{@code excludedPathPrefixes} matters because the admin and activation APIs may be mounted
+ * under the protocol prefix itself (e.g. {@code protocol-prefix} of {@code /api/2.1/opensharing}
+ * with {@code admin.base-path} of {@code /api/2.1/opensharing/provider}), which is registered as a
+ * servlet URL pattern of its own but is <em>also</em> a match for this filter's broader one. Without
+ * the exclusion, this filter would run on every admin and activation request too, and reject them
+ * for lacking a recipient token before the filter that actually knows how to authenticate them —
+ * or, for activation, any filter at all — gets a chance to.
  */
 public class RecipientAuthenticationFilter extends OncePerRequestFilter {
 
@@ -26,17 +35,28 @@ public class RecipientAuthenticationFilter extends OncePerRequestFilter {
 
   private final RecipientTokenService tokenService;
   private final ObjectMapper objectMapper;
+  private final List<String> excludedPathPrefixes;
 
   public RecipientAuthenticationFilter(
-      RecipientTokenService tokenService, ObjectMapper objectMapper) {
+      RecipientTokenService tokenService,
+      ObjectMapper objectMapper,
+      List<String> excludedPathPrefixes) {
     this.tokenService = tokenService;
     this.objectMapper = objectMapper;
+    this.excludedPathPrefixes = excludedPathPrefixes;
   }
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
+    String path = request.getRequestURI();
+    for (String excluded : excludedPathPrefixes) {
+      if (!excluded.isBlank() && path.startsWith(excluded)) {
+        chain.doFilter(request, response);
+        return;
+      }
+    }
     Optional<String> bearerToken = BearerTokens.from(request);
     if (bearerToken.isEmpty()) {
       reject(response, "a bearer token is required");

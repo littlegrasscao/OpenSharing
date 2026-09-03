@@ -75,13 +75,22 @@ public class OpenApiConfiguration {
                     bearer("A provider principal's token from the configured allowlist.")));
   }
 
-  /** The protocol a recipient calls, mounted wherever {@code protocol-prefix} points. */
+  /**
+   * The protocol a recipient calls, mounted wherever {@code protocol-prefix} points. Excludes the
+   * admin and activation APIs explicitly: by default they are mounted underneath the protocol
+   * prefix too ({@code /api/2.1/opensharing/provider}, {@code /api/2.1/opensharing/activation}
+   * under {@code /api/2.1/opensharing}), which {@code pathsToMatch} alone cannot tell apart from the
+   * protocol's own routes.
+   */
   @Bean
   public GroupedOpenApi protocolApi(OpenSharingProperties properties) {
     return GroupedOpenApi.builder()
         .group("protocol")
         .displayName("Recipient protocol")
         .pathsToMatch(properties.getProtocolPrefix() + "/**")
+        .pathsToExclude(
+            properties.getAdmin().getBasePath() + "/**",
+            properties.getActivation().getBasePath() + "/**")
         .addOpenApiCustomizer(api -> api.addSecurityItem(requirement(RECIPIENT_TOKEN)))
         .build();
   }

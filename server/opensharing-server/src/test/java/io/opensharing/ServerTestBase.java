@@ -30,7 +30,6 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "opensharing.catalog.type=local",
       "opensharing.catalog.local.file=classpath:test-catalog.yml",
       "opensharing.activation.external-base-url=https://sharing.example.com",
-      "opensharing.protocol-prefix=/opensharing",
       "opensharing.security.credential-encryption-key=" + ServerTestBase.CREDENTIAL_KEY,
       "opensharing.admin.principals[0].name=" + ServerTestBase.ALICE,
       "opensharing.admin.principals[0].bearer-token=" + ServerTestBase.ALICE_TOKEN,
@@ -42,8 +41,9 @@ abstract class ServerTestBase {
 
   /** Base64 of 32 bytes, so a catalog credential can be stored in tests that want one. */
   static final String CREDENTIAL_KEY = "c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=";
-  static final String ADMIN_BASE = "/api/admin/v1";
-  static final String PROTOCOL_BASE = "/opensharing";
+  static final String PROTOCOL_BASE = "/api/2.1/opensharing";
+  static final String ADMIN_BASE = "/api/2.1/opensharing/provider";
+  static final String ACTIVATION_BASE = "/api/2.1/opensharing/activation";
 
   /** The provider admin every test acts as, matching {@code sharableBy} in the test catalog. */
   static final String ALICE = "alice@example.com";
@@ -155,7 +155,7 @@ abstract class ServerTestBase {
   protected String activate(String activationUrl) throws Exception {
     JsonNode profile =
         readJson(
-            mvc.perform(get("/activation/" + nonceOf(activationUrl)))
+            mvc.perform(get(ACTIVATION_BASE + "/" + nonceOf(activationUrl)))
                 .andExpect(status().isOk())
                 .andReturn());
     return profile.get("bearerToken").asText();

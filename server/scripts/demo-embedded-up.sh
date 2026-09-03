@@ -99,9 +99,9 @@ server.env=dev
 server.authorization=disable
 server.opensharing.enabled=true
 server.opensharing.port=$OS_INTERNAL_PORT
-server.opensharing.protocol-prefix=/api/2.1/unity-catalog/sharing
-server.opensharing.admin-base-path=/api/admin/v1
-server.opensharing.activation-base-path=/activation
+server.opensharing.protocol-prefix=/api/2.1/opensharing
+server.opensharing.admin-base-path=/api/2.1/opensharing/provider
+server.opensharing.activation-base-path=/api/2.1/opensharing/activation
 server.opensharing.external-base-url=http://localhost:$UC_PORT
 server.opensharing.credential-encryption-key=$CREDENTIAL_KEY
 server.opensharing.principal-name=$PROVIDER
@@ -129,7 +129,7 @@ else
   )
   for _ in $(seq 90); do
     curl -s -o /dev/null -m 2 "$UC_URI/catalogs" \
-      && curl -s -o /dev/null -m 2 "http://localhost:$UC_PORT/api/admin/v1/shares" \
+      && curl -s -o /dev/null -m 2 "http://localhost:$UC_PORT/api/2.1/opensharing/provider/shares" \
         -H "Authorization: Bearer demo" \
       && break
     sleep 2
@@ -137,8 +137,9 @@ else
   curl -s -o /dev/null -m 2 "$UC_URI/catalogs" \
     || { echo "UC did not come up; see $DEMO_HOME/unity-catalog.log" >&2; exit 1; }
   # This is the same port UC itself just answered on: proof the transcoder is routing
-  # /api/admin/v1 to embedded OpenSharing rather than to Armeria, which knows no such path.
-  curl -s -o /dev/null -m 2 "http://localhost:$UC_PORT/api/admin/v1/shares" \
+  # /api/2.1/opensharing/provider to embedded OpenSharing rather than to Armeria, which knows
+  # no such path.
+  curl -s -o /dev/null -m 2 "http://localhost:$UC_PORT/api/2.1/opensharing/provider/shares" \
     -H "Authorization: Bearer demo" \
     || { echo "OpenSharing did not come up; see $DEMO_HOME/unity-catalog.log" >&2; exit 1; }
   note "pid $(cat "$DEMO_HOME/unity-catalog.pid"), log at $DEMO_HOME/unity-catalog.log"
@@ -179,16 +180,16 @@ UC_URI=$UC_URI
 UC_PORT=$UC_PORT
 OS_INTERNAL_PORT=$OS_INTERNAL_PORT
 SERVER=http://localhost:$UC_PORT
-ADMIN=http://localhost:$UC_PORT/api/admin/v1
-PROTOCOL=http://localhost:$UC_PORT/api/2.1/unity-catalog/sharing
+ADMIN=http://localhost:$UC_PORT/api/2.1/opensharing/provider
+PROTOCOL=http://localhost:$UC_PORT/api/2.1/opensharing
 PROVIDER=$PROVIDER
 PROVIDER_TOKEN=demo-provider-token
 DEMO_DATA=$DEMO_HOME/data
 ENV
 
 step "Ready"
-ADMIN_URL="http://localhost:$UC_PORT/api/admin/v1"
-PROTOCOL_URL="http://localhost:$UC_PORT/api/2.1/unity-catalog/sharing"
+ADMIN_URL="http://localhost:$UC_PORT/api/2.1/opensharing/provider"
+PROTOCOL_URL="http://localhost:$UC_PORT/api/2.1/opensharing"
 cat <<NEXT
 
   source $DEMO_HOME/demo.env
