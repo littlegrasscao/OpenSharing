@@ -19,7 +19,7 @@ import jakarta.persistence.UniqueConstraint;
  */
 @Entity
 @Table(
-    name = "share_permissions",
+    name = "os_share_permissions",
     uniqueConstraints =
         @UniqueConstraint(
             name = "uk_share_permission",

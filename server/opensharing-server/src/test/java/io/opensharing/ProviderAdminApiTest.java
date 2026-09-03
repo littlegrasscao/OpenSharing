@@ -76,7 +76,7 @@ class ProviderAdminApiTest extends ServerTestBase {
 
   private String storedColumn(String column, String principal) {
     return jdbc.queryForObject(
-        "select " + column + " from principals where name_lower = ?",
+        "select " + column + " from os_principals where name_lower = ?",
         String.class,
         principal.toLowerCase(Locale.ROOT));
   }

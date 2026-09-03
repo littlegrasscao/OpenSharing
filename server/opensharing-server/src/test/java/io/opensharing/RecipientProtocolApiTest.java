@@ -88,16 +88,16 @@ class RecipientProtocolApiTest extends ServerTestBase {
   void refusesToServeWhenNothingIsStoredToAskTheCatalogWith() throws Exception {
     String sealed =
         jdbc.queryForObject(
-            "select catalog_credential from principals where name_lower = ?",
+            "select catalog_credential from os_principals where name_lower = ?",
             String.class,
             ALICE.toLowerCase(Locale.ROOT));
-    jdbc.update("update principals set catalog_credential = null where name_lower = ?",
+    jdbc.update("update os_principals set catalog_credential = null where name_lower = ?",
         ALICE.toLowerCase(Locale.ROOT));
 
     try {
       refusedRead();
     } finally {
-      jdbc.update("update principals set catalog_credential = ? where name_lower = ?",
+      jdbc.update("update os_principals set catalog_credential = ? where name_lower = ?",
           sealed, ALICE.toLowerCase(Locale.ROOT));
     }
   }

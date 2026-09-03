@@ -44,7 +44,7 @@ import java.util.Set;
  */
 @Entity
 @Table(
-    name = "shared_data_objects",
+    name = "os_shared_data_objects",
     uniqueConstraints = {
       @UniqueConstraint(
           name = "uk_shared_objects_shared_as",
@@ -131,7 +131,7 @@ public class SharedDataObjectEntity extends BaseEntity {
 
   @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
-      name = "shared_object_access_modes",
+      name = "os_shared_object_access_modes",
       joinColumns = @JoinColumn(name = "shared_object_id"))
   @Enumerated(EnumType.STRING)
   @Column(name = "access_mode", length = 16)
@@ -139,7 +139,7 @@ public class SharedDataObjectEntity extends BaseEntity {
 
   @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
-      name = "shared_object_auxiliary_locations",
+      name = "os_shared_object_auxiliary_locations",
       joinColumns = @JoinColumn(name = "shared_object_id"))
   @Column(name = "location", length = 2048)
   private List<String> auxiliaryLocations = new ArrayList<>();

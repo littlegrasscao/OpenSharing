@@ -24,7 +24,7 @@ import java.util.Map;
 /** An organization or principal that consumes shares. */
 @Entity
 @Table(
-    name = "recipients",
+    name = "os_recipients",
     uniqueConstraints =
         @UniqueConstraint(name = "uk_recipients_name_lower", columnNames = "name_lower"))
 public class RecipientEntity extends BaseEntity {
@@ -54,14 +54,14 @@ public class RecipientEntity extends BaseEntity {
   /** CIDR blocks the recipient may connect from. Empty means anywhere. */
   @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
-      name = "recipient_ip_access_list",
+      name = "os_recipient_ip_access_list",
       joinColumns = @JoinColumn(name = "recipient_id"))
   @Column(name = "cidr", length = 64)
   private List<String> ipAccessList = new ArrayList<>();
 
   @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
-      name = "recipient_properties",
+      name = "os_recipient_properties",
       joinColumns = @JoinColumn(name = "recipient_id"),
       uniqueConstraints =
           @UniqueConstraint(

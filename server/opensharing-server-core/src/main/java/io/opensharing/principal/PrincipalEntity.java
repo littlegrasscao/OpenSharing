@@ -20,7 +20,7 @@ import jakarta.persistence.UniqueConstraint;
  */
 @Entity
 @Table(
-    name = "principals",
+    name = "os_principals",
     uniqueConstraints = {
       @UniqueConstraint(name = "uk_principals_name_lower", columnNames = "name_lower"),
       @UniqueConstraint(name = "uk_principals_token", columnNames = "token_hash")

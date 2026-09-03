@@ -97,32 +97,36 @@ OpenSharing.embedded()
 Recipient protocol endpoints, share metadata (JPA), credential vending, and Delta/Iceberg serving
 stay in OpenSharing. Only catalog access and provider authentication are delegated to the host.
 
-## Sharing UC's own database
+## No datasource config of its own — it reads the host's
 
-OpenSharing's metadata (`principals`, `shares`, `shared_data_objects`, `recipients`,
-`recipient_tokens`, `share_permissions`) is stored via its own JPA/Hibernate model, independent of
-the host's schema. Nothing requires a separate database file for it, though: point
-`server.opensharing.datasource.url` (or `spring.datasource.url` directly) at the exact same JDBC
-URL the host already uses for its own metadata, and both sides' tables land in one physical
-database — safe within a single JVM, since none of OpenSharing's table names collide with UC's
-`uc_`-prefixed ones. The demo scripts do this by default: `demo-embedded-up.sh` points OpenSharing
-at UC's own `etc/db/h2db`, so `rm -rf $DEMO_HOME` is the only reset step, not two.
+OpenSharing's metadata (`os_principals`, `os_shares`, `os_shared_data_objects`, `os_recipients`,
+`os_recipient_tokens`, `os_share_permissions`, all prefixed `os_` so they never collide with a
+host's own tables) is stored via its own JPA/Hibernate model, independent of the host's schema. In
+embedded mode there is no `server.opensharing.datasource.url` (or equivalent) to set: the host is
+expected to hand OpenSharing whichever JDBC connection it already uses for its own metadata —
+`spring.datasource.url`/`username`/`password`/`driver-class-name` — and both sides' tables land in
+one physical database. For UC, `OpenSharingLifecycle` reads this straight out of the
+`HibernateConfigurator` UC already built for itself (`hibernate.connection.url` →
+`spring.datasource.url`, etc.), so there is nothing for an operator to duplicate or keep in sync;
+whatever database UC points at (H2 file, Postgres, MySQL) is what OpenSharing follows.
 
-Two things to get right when consolidating onto H2:
+This is safe within a single JVM: H2 keeps one shared in-memory `Database` instance per canonical
+file path per process, and a real database server is designed for exactly this kind of sharing.
+
+Two things worth knowing about it:
 
 - **Matching credentials, before the first connect.** H2 creates its database's admin user from
-  whichever username/password the *first* connection presents; if the host's Hibernate config
-  doesn't set `hibernate.connection.username`/`password` explicitly, that first connection uses an
-  empty username, and a second connection pool (OpenSharing's Spring datasource, which defaults to
-  `sa`/blank) fails with `Wrong user name or password`. Set both sides' credentials explicitly and
-  identically — `sa`/blank is fine for a demo.
+  whichever username/password the *first* connection presents. If the host's Hibernate config
+  doesn't set `hibernate.connection.username`/`password` explicitly (UC's own demo config doesn't),
+  that first connection uses an empty username — so the mapping has to carry that through as an
+  explicit empty string, not silently fall back to OpenSharing's own `application.yml` default of
+  `sa`, or the second connection pool fails with `Wrong user name or password`.
 - **Two connection pools, not one transaction.** This shares a database file, not a Hibernate
   `SessionFactory`/`EntityManagerFactory` or a JDBC connection. A single logical operation that
-  touches both UC's tables and OpenSharing's (e.g. resolving a table while creating a share) still
-  runs as two independent local transactions — there is no 2PC/XA coordination between them. For a
-  demo/single-node deployment this is an acceptable simplification (SQLite/H2-style embedded stores
-  don't usually need cross-service atomicity); it is not a substitute for real distributed
-  transactions if that ever matters.
+  touches both the host's tables and OpenSharing's (e.g. resolving a table while creating a share)
+  still runs as two independent local transactions — there is no 2PC/XA coordination between them.
+  Acceptable for a single-node deployment; not a substitute for real distributed transactions if
+  that ever matters.
 
 ## What the host implements
 

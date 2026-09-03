@@ -21,7 +21,7 @@ import java.time.Instant;
  */
 @Entity
 @Table(
-    name = "recipient_tokens",
+    name = "os_recipient_tokens",
     uniqueConstraints = {
       @UniqueConstraint(name = "uk_recipient_tokens_hash", columnNames = "token_hash"),
       @UniqueConstraint(

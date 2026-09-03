@@ -66,7 +66,7 @@ abstract class ServerTestBase {
 
   protected String principalId(String name) {
     return jdbc.queryForObject(
-        "select id from principals where name_lower = ?",
+        "select id from os_principals where name_lower = ?",
         String.class,
         name.toLowerCase(Locale.ROOT));
   }

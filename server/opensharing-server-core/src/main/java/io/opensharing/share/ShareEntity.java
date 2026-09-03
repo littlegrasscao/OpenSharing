@@ -20,7 +20,7 @@ import java.util.Map;
 /** A named, access-controlled collection of assets. */
 @Entity
 @Table(
-    name = "shares",
+    name = "os_shares",
     uniqueConstraints =
         @UniqueConstraint(name = "uk_shares_name_lower", columnNames = "name_lower"))
 public class ShareEntity extends BaseEntity {
@@ -51,7 +51,7 @@ public class ShareEntity extends BaseEntity {
 
   @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
-      name = "share_properties",
+      name = "os_share_properties",
       joinColumns = @JoinColumn(name = "share_id"),
       uniqueConstraints =
           @UniqueConstraint(
