@@ -11,6 +11,8 @@
 #                    (default 8099)
 #   MVN_SETTINGS     Maven settings for OpenSharing build  (default server/.mvn/local-mirror-settings.xml when present)
 #   MAVEN_PROXY_URL  Maven mirror for UC sbt               (default Databricks proxy when unset)
+#   CREDENTIAL_KEY   AES key sealing a principal's catalog credential (default: a fixed demo key)
+#   PROVIDER         name the provider's minted token is issued for (default admin@unitycatalog.local)
 set -euo pipefail
 
 DEMO_HOME="${DEMO_HOME:-$HOME/.opensharing-embedded-demo}"
@@ -181,17 +183,14 @@ PROVIDER_TOKEN="$(java -cp "$(embedded_classpath)" "$SERVER_DIR/scripts/MintToke
 note "signed by UC's own key, subject '$PROVIDER'"
 
 cat > "$DEMO_HOME/demo.env" <<ENV
-# Written by demo-embedded-up.sh; sourced by demo-embedded.sh
-# One port for everything: UC and OpenSharing are the same process and the same address.
-UC_URI=$UC_URI
-UC_PORT=$UC_PORT
-OS_INTERNAL_PORT=$OS_INTERNAL_PORT
+# Written by demo-embedded-up.sh; sourced by demo-embedded.sh.
+# Only what demo-embedded.sh actually reads: it derives its own ADMIN and PROTOCOL from SERVER
+# (see its \${ADMIN:-...} / \${PROTOCOL:-...} defaults), so there is nothing to keep in sync here
+# if that path scheme ever changes. UC_URI, UC_PORT, OS_INTERNAL_PORT and DEMO_DATA are this
+# script's own local variables, not something demo-embedded.sh reads.
 SERVER=http://localhost:$UC_PORT
-ADMIN=http://localhost:$UC_PORT/api/2.1/opensharing/provider
-PROTOCOL=http://localhost:$UC_PORT/api/2.1/opensharing
 PROVIDER=$PROVIDER
 PROVIDER_TOKEN=$PROVIDER_TOKEN
-DEMO_DATA=$DEMO_HOME/data
 ENV
 
 step "Ready"
