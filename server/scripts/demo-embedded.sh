@@ -31,8 +31,28 @@ PROVIDER_TOKEN="${PROVIDER_TOKEN:-demo-provider-token}"
 SHARE="demo_share_$RANDOM"
 RECIPIENT="demo_partner_$RANDOM"
 
+step() { printf '\n\033[1;36m== %s\033[0m\n' "$1"; }
+note() { printf '   %s\n' "$1"; }
+maybe_pause() { if [[ "${PAUSE:-}" == ask ]]; then read -r -p 'Press enter...' _; fi; }
+
+# Echoes the request a call below is about to make, so the walkthrough shows not just what came
+# back but what was actually asked — method, full url, bearer token and body (if there is one),
+# each its own dim line ahead of the response. Printed to stderr: every caller pipes the actual
+# response through jq, and this must not become part of that pipe's stdin. The token's value is
+# never the interesting part of a demo call (it's the same $PROVIDER_TOKEN or $TOKEN every
+# request) and is long enough to crowd out what is, so it is named rather than printed in full.
+show_request() { # method url [body] [bearer-name]
+  local method="$1" url="$2" body="${3:-}" bearer="${4:-}"
+  printf '   \033[2m> %s %s\033[0m\n' "$method" "$url" >&2
+  [[ -n "$bearer" ]] && printf '   \033[2m> Authorization: Bearer %s\033[0m\n' "$bearer" >&2
+  if [[ -n "$body" ]]; then
+    printf '   \033[2m> %s\033[0m\n' "$(jq -c . <<<"$body" 2>/dev/null || printf '%s' "$body")" >&2
+  fi
+}
+
 admin() {
   local method="$1" path="$2" body="${3:-}"
+  show_request "$method" "$ADMIN$path" "$body" '$PROVIDER_TOKEN'
   if [[ -n "$body" ]]; then
     curl -sS -X "$method" "$ADMIN$path" \
       -H "Authorization: Bearer $PROVIDER_TOKEN" -H 'Content-Type: application/json' -d "$body"
@@ -40,10 +60,6 @@ admin() {
     curl -sS -X "$method" "$ADMIN$path" -H "Authorization: Bearer $PROVIDER_TOKEN"
   fi
 }
-
-step() { printf '\n\033[1;36m== %s\033[0m\n' "$1"; }
-note() { printf '   %s\n' "$1"; }
-maybe_pause() { if [[ "${PAUSE:-}" == ask ]]; then read -r -p 'Press enter...' _; fi; }
 
 step "Unity Catalog and OpenSharing share one process and one address: $SERVER"
 note "provider principal is '$PROVIDER' — the subject of PROVIDER_TOKEN's own JWT, not a"
@@ -83,16 +99,21 @@ admin PATCH "/shares/$SHARE/permissions" \
 maybe_pause
 
 step "Recipient opens the activation URL once and receives config.share"
+show_request GET "$ACTIVATION_URL"
 PROFILE=$(curl -sS "$ACTIVATION_URL")
 echo "$PROFILE" | jq '{shareCredentialsVersion,endpoint,icebergEndpoint,expirationTime,bearerToken:"<redacted>"}'
 TOKEN=$(echo "$PROFILE" | jq -r .bearerToken)
 maybe_pause
 
 step "The activation URL cannot be replayed"
+show_request GET "$ACTIVATION_URL"
 curl -sS "$ACTIVATION_URL" | jq .
 maybe_pause
 
-recipient() { curl -sS "$PROTOCOL$1" -H "Authorization: Bearer $TOKEN"; }
+recipient() {
+  show_request GET "$PROTOCOL$1" "" '$TOKEN'
+  curl -sS "$PROTOCOL$1" -H "Authorization: Bearer $TOKEN"
+}
 
 step "Recipient discovers what it can read"
 recipient /shares | jq '.items[] | {name,displayName}'
@@ -101,9 +122,9 @@ recipient "/shares/$SHARE/all-tables" | jq '.items[] | {name,schema,location,acc
 maybe_pause
 
 step "Recipient asks for scoped, short-lived storage credentials"
-curl -sS -X POST \
-  "$PROTOCOL/shares/$SHARE/schemas/sales/tables/orders/temporary-table-credentials" \
-  -H "Authorization: Bearer $TOKEN" | jq .
+CREDENTIALS_PATH="/shares/$SHARE/schemas/sales/tables/orders/temporary-table-credentials"
+show_request POST "$PROTOCOL$CREDENTIALS_PATH" "" '$TOKEN'
+curl -sS -X POST "$PROTOCOL$CREDENTIALS_PATH" -H "Authorization: Bearer $TOKEN" | jq .
 maybe_pause
 
 step "Url access mode reads Delta metadata from the table location"

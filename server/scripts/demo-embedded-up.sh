@@ -142,7 +142,14 @@ else
   curl -s -o /dev/null -m 2 "http://localhost:$UC_PORT/api/2.1/opensharing/provider/shares" \
     -H "Authorization: Bearer demo" \
     || { echo "OpenSharing did not come up; see $DEMO_HOME/unity-catalog.log" >&2; exit 1; }
-  note "pid $(cat "$DEMO_HOME/unity-catalog.pid"), log at $DEMO_HOME/unity-catalog.log"
+  UC_PID="$(cat "$DEMO_HOME/unity-catalog.pid")"
+  note "pid $UC_PID, log at $DEMO_HOME/unity-catalog.log"
+  if command -v lsof >/dev/null 2>&1; then
+    note "one process, every port it holds — only *:$UC_PORT is public, the rest are 127.0.0.1:"
+    lsof -a -p "$UC_PID" -iTCP -sTCP:LISTEN -nP
+  else
+    note "lsof not found; skipping the pid/port proof above"
+  fi
 fi
 
 column() { # name type position [partition_index]
