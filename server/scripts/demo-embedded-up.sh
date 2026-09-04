@@ -43,7 +43,7 @@ embedded_classpath() {
     echo "Missing $raw; run the UC build step below first." >&2
     exit 1
   }
-  tr ':' '\n' < "$raw" | rg -v 'log4j-to-slf4j|logback-|jul-to-slf4j' | paste -sd: -
+  tr ':' '\n' < "$raw" | grep -Ev 'log4j-to-slf4j|logback-|jul-to-slf4j' | paste -sd: -
 }
 
 if [[ -z "${MVN_SETTINGS:-}" && -f "$SERVER_DIR/.mvn/local-mirror-settings.xml" ]]; then
