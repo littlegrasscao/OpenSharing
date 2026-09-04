@@ -198,8 +198,8 @@ ADMIN_URL="http://localhost:$UC_PORT/api/2.1/opensharing/provider"
 PROTOCOL_URL="http://localhost:$UC_PORT/api/2.1/opensharing"
 cat <<NEXT
 
-  source $DEMO_HOME/demo.env
   $SERVER_DIR/scripts/demo-embedded.sh
+  # (it finds and sources $DEMO_HOME/demo.env on its own; nothing to source by hand)
 
   One address for both — dispatched by URL path, not by port:
     Unity Catalog:   $UC_URI

@@ -2,8 +2,11 @@
 # End-to-end walkthrough of OpenSharing embedded inside Unity Catalog OSS.
 #
 # Prerequisite:  ./scripts/demo-embedded-up.sh
+# Nothing else to do: this script finds demo-embedded-up.sh's demo.env and sources it on its own
+# (unless SERVER is already set in the environment, which skips that and takes whatever is
+# already exported instead).
 #
-# Environment (or source demo.env written by demo-embedded-up.sh):
+# Environment:
 #   SERVER            the one address — UC's own public port  (default http://localhost:8080)
 #   ADMIN             provider admin API                       (default $SERVER/api/2.1/opensharing/provider)
 #   PROTOCOL          recipient protocol prefix                (default $SERVER/api/2.1/opensharing)
