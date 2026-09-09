@@ -77,7 +77,7 @@ own.
 
 | Package | What it holds |
 |---|---|
-| `principal` | `PrincipalEntity`, `PrincipalStore`, and `Caller` — the identity the admin filter resolves and controllers ask for when a write needs an owner. Principals are provisioned from configuration at startup, not through an admin API. |
+| `principal` | `Caller`, `Ownership`, and `ConfiguredPrincipalsIdentityResolver` — the identity the admin filter resolves and controllers ask for when a write needs an owner. No principal table: `local` reads a fixed, in-memory configured list; `unity` (`catalog.unity.UnityCatalogProviderIdentityResolver`) asks the catalog itself, fresh, on every request. |
 | `share` | `ShareEntity`, `SharePermissionEntity` and `SharePrivilege`, `ShareStore`, the provider-admin share and permission endpoints, `ShareAccessService` (may this recipient read this share?) and `ShareMapper`. |
 | `asset` | Everything about a shared asset that does not depend on its format: `SharedDataObjectEntity` and its status, `SharedDataObjectStore` and `SharedDataObjectService`, `SharedAliases` (the alias rules), `SharedTableService` (which tables a share holds, expanding a shared schema), `AssetResolutionService` (the server's use of the catalog trait, and so where the access modes an object offers are decided), `CredentialVendingService` and `TableMapper`. `asset.storage` holds reaching the storage a table lives in, whatever its format: the `UrlSigner` per scheme, the `StorageReader` that fetches a file the server itself has to look at, `StoragePaths` (whether a path is one of a shared table's own — asked by every format, so answered once), and `HadoopStorage`, which is how a read that goes through Hadoop gets the catalog's credentials and the path spelling a driver wants, `VendedGcsToken` included. Then one subpackage per format: `asset.delta` is url access mode — `DeltaLogReader` over Delta Kernel, `DeltaSharingCapabilities` (which response format a request settles on, and how much of the table's protocol the client is told) and a `DeltaLines` writer per format — and `asset.iceberg` is the Iceberg catalog's `loadTable`, plus the refusal that sends the Delta read operations there. |
 | `serving` | The recipient-facing protocol: `RecipientApi` (every route it serves), the share, schema and table discovery endpoints, credential vending, the four table read operations, the Iceberg REST catalog with the error shape its clients read, and the `TableOperations` seam those read operations dispatch across. |
@@ -129,9 +129,11 @@ inside it. Those two cascades are the only cross-package writes.
   principal, so an admin can see what a colleague shares; every write goes through `requireOwned` and is
   refused with `PERMISSION_DENIED` for anyone else. `Ownership` states the rule once, which is where
   group membership will widen it — until then a `GROUP` owns only in its own right.
-- **Provider principals come from configuration.** `opensharing.admin.principals` lists the
-  usernames and bearer tokens the server recognizes. Each is registered in the database at startup;
-  rotating a credential means changing the configuration and restarting.
+- **Provider identity is never stored.** For `catalog.type=local`, `opensharing.admin.principals`
+  lists the usernames and bearer tokens the server recognizes, held in memory only — no database row,
+  and rotating a credential means changing the configuration and restarting. For `catalog.type=unity`,
+  there is nothing to configure at all: identity is resolved fresh from the catalog on every
+  provider-admin request.
 - **The catalog is asked as a provider, never as a recipient.** Adding an object is asked as the admin
   making the request, whose token is in hand while it is in flight. Serving — both re-resolving the
   table and minting the credentials that open it — is asked as the owner of
@@ -170,16 +172,15 @@ inside it. Those two cascades are the only cross-package writes.
 - **Timestamps that mean "when the row appeared" are not duplicated.** `added_at` and `granted_at` are
   the row's `created_at`; a token's `superseded_at` and `revoked_at` are real columns, because they say
   something `created_at` cannot.
-- **Every credential the server authenticates is stored as a hash.** Issuing a recipient token only
-  creates an activation link. The bearer token is minted when the recipient opens that link, returned
-  once inside `config.share`, and stored only as a SHA-256 hash. The single exception is a principal's
-  token, which the server must present to the catalog rather than merely recognize, so a second copy is
-  sealed under `security.credential-encryption-key`: a stolen database alone still yields nothing
-  usable, while a stolen database and key together yield every provider's catalog credential. That is
-  the price of asking the catalog as the provider at all, and it is why no principal can be registered
-  without a key set. Each sealed credential is bound to the row it belongs to, so whoever can write
-  the table cannot move one provider's credential into another's row and have the catalog asked with
-  the wrong privileges — it no longer decrypts there.
+- **No provider credential is ever stored, in any form.** Issuing a recipient token only creates an
+  activation link. The bearer token is minted when the recipient opens that link, returned once inside
+  `config.share`, and stored only as a SHA-256 hash — the server only ever needs to recognize it again,
+  never present it anywhere. A provider's token is not stored at all, hashed or otherwise: for the
+  `unity` catalog connector, every provider-admin request resolves identity fresh by asking the catalog
+  itself (`POST .../opensharing/authorize`), and a recipient's read reaches the catalog through
+  on-behalf-of access — this server's own configured identity plus the share owner's catalog user id,
+  never a token nobody has. There is no principal table, so there is nothing for a database dump to
+  expose in the first place.
 - **A token comes with the recipient, and only rotation replaces it.** There is no issue endpoint, so
   credentials cannot pile up by accident and a recipient can never exist without a way in. Tokens are
   still rows of their own keyed by recipient, which is what makes rotation safe: the superseded token
@@ -211,19 +212,18 @@ cd server
 mvn install
 mvn -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="\
   --opensharing.admin.principals[0].name=alice@example.com \
-  --opensharing.admin.principals[0].bearer-token=dapi-alice-secret \
-  --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
+  --opensharing.admin.principals[0].bearer-token=dapi-alice-secret"
 ```
 
 The server listens on `http://localhost:8080` with an H2 file database under `server/data/` and the
-sample catalog in `src/main/resources/local-catalog.yml`. Configure
-Configure `opensharing.admin.principals` with at least one username and bearer token; each
-entry is registered in the database at startup. With none configured, every admin call is rejected.
+sample catalog in `src/main/resources/local-catalog.yml`. Configure `opensharing.admin.principals`
+with at least one username and bearer token, held in memory only — the local file catalog has no
+identity provider to delegate to. With none configured, every admin call is rejected.
 
-`security.credential-encryption-key` is what a principal's token is sealed under so the catalog can be
-asked as them while serving a recipient. It is required to provision anyone, so a server started without
-it cannot authenticate a provider at all. The key above is a throwaway for local use; a real deployment keeps one
-somewhere a database dump does not reach.
+(For `opensharing.catalog.type=unity` there is no `admin.principals` to configure at all: a
+provider-admin request just presents whatever bearer token their catalog already issued them, and
+this server asks the catalog itself whose it is, fresh, on every request — see "Catalog integration"
+above.)
 
 Then walk through the whole provider-to-recipient flow (requires `jq`):
 
@@ -420,13 +420,10 @@ opensharing:
 `bearer-token` is the principal's catalog credential, and this server accepts it as their login too.
 One secret, because the server has to ask the catalog as whoever shared an asset, and a second secret
 would only ever have to be kept identical to this one to behave; whoever holds it can already act as
-them against the catalog that decides everything here anyway. It is never stored in the clear,
-returned or logged, but it is stored twice:
-hashed, to recognize it when they present it, and sealed under
-`security.credential-encryption-key`, to present it to the catalog on a recipient's behalf long after
-their own request ended. A token of up to 2048 characters is accepted, which holds the JWT a catalog
-is apt to issue; a longer one is refused in those terms rather than left to fail as a storage conflict.
-Rotating a credential means updating the allowlist and restarting the server.
+them against the catalog that decides everything here anyway. It is never returned or logged, and,
+unlike a recipient's token, never persisted anywhere at all: the configured list lives in memory only
+for the life of the process, compared directly against what a request presents. Rotating a credential
+means updating the allowlist and restarting the server.
 
 Every other admin call authenticates as one of those principals, because everything records who did it:
 
@@ -553,8 +550,7 @@ command line or as the upper-case underscored form of the same path in the envir
 |---|---|---|
 | `protocol-prefix` | `/api/2.1/opensharing` | Prefix for protocol endpoints; also what goes in the profile file. |
 | `provider.base-path` | `/api/2.1/opensharing/provider` | Prefix for the provider-admin API. |
-| `admin.principals` | `[]` | Usernames and bearer tokens provisioned at startup. Each token is both the admin login and the catalog credential. |
-| `security.credential-encryption-key` | blank | Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the catalog can be asked as them later. Required: blank means no principal can be provisioned. Keep it out of the database's reach: an environment variable, a mounted secret, a KMS. |
+| `admin.principals` | `[]` | Usernames and bearer tokens, held in memory only — `catalog.type=local` only; `unity` asks the catalog itself instead. Each token is both the admin login and the catalog credential. |
 | `activation.base-path` | `/api/2.1/opensharing/activation` | Prefix the single-use activation endpoint is served under. |
 | `activation.external-base-url` | `http://localhost:8080` | Public base URL used to build activation URLs and the profile endpoint. |
 | `activation.ttl` | `72h` | How long an unused activation link stays valid. |
@@ -570,6 +566,7 @@ command line or as the upper-case underscored form of the same path in the envir
 | `catalog.local.file` | `classpath:local-catalog.yml` | Spring resource location of the catalog file. |
 | `catalog.unity.uri` | blank | Base url of the Unity Catalog API, including the path it is served under, e.g. `http://localhost:8081/api/2.1/unity-catalog`. Required when the type is `unity`. |
 | `catalog.unity.connect-timeout` / `request-timeout` | `5s` / `30s` | How long to wait for the catalog to accept a connection, and for it to answer. |
+| `catalog.unity.server-secret` | blank | This server's own identity, presented instead of a bearer token for on-behalf-of access on a recipient's read (no owner token is available to present for it). Must match the catalog's own configured secret. Only required if a recipient is ever actually served. |
 
 ### Reaching storage
 
@@ -965,13 +962,6 @@ the token identifies is not asked for as a parameter, and that a streamed respon
 type once.
 
 ## Not implemented yet
-
-- Rotating `security.credential-encryption-key` in place. Nothing re-seals what is already stored, so a
-  key change means `PATCH`ing every principal a new `bearer_token`; until then their recipients' reads
-  fail with an internal error rather than falling back, because silently serving with the wrong identity
-  would be worse than stopping. Which key state caused it is logged, not sent — a recipient hears only
-  that the table cannot be served. Adding to a share still works in the meantime, since that goes out
-  with the token the request arrived with.
 - A catalog credential per catalog. One connector runs at a time, so a principal has one credential
   and nothing keys it to the catalog it is for.
 - Obtaining a credential rather than being handed one. A provider pastes a long-lived secret in;

@@ -55,10 +55,12 @@ cd ~/unitycatalog && sbt "server/compile"
 
 | Mode | How to start | Catalog | Provider identity |
 |------|----------------|---------|-------------------|
-| `standalone` | `OpenSharing.runStandalone(args)` or `OpenSharingServer.main` | `opensharing.catalog.*` (`local` file or `unity` HTTP) | `opensharing.admin.principals` provisioned at startup |
-| `embedded` | `OpenSharing.embedded()...run(args)` or Spring with `opensharing.hosting.mode=embedded` | Host registers a `CatalogConnector` bean | Host may register a `ProviderIdentityResolver` |
+| `standalone` | `OpenSharing.runStandalone(args)` or `OpenSharingServer.main` | `opensharing.catalog.*` (`local` file or `unity` HTTP) | `local`: `opensharing.admin.principals`, held in memory only. `unity`: the catalog itself, asked fresh on every request — see "Provider identity" below |
+| `embedded` | `OpenSharing.embedded()...run(args)` or Spring with `opensharing.hosting.mode=embedded` | Host registers a `CatalogConnector` bean (required) | Host registers a `ProviderIdentityResolver` bean (required) |
 
-Set `opensharing.hosting.mode` in configuration (`standalone` by default).
+Set `opensharing.hosting.mode` in configuration (`standalone` by default). Neither mode ever
+persists a provider's bearer token, encrypted or otherwise, or keeps a principal table of its own
+— see "Provider identity: no stored credential, ever" below.
 
 ## Standalone (current demo)
 
@@ -67,10 +69,14 @@ Set `opensharing.hosting.mode` in configuration (`standalone` by default).
 java -jar opensharing-server-0.1.0-SNAPSHOT-exec.jar \
   --opensharing.hosting.mode=standalone \
   --opensharing.catalog.type=unity \
-  --opensharing.catalog.unity.uri=http://localhost:8080/api/2.1/unity-catalog \
-  --opensharing.admin.principals[0].name=admin@example.com \
-  --opensharing.admin.principals[0].bearer-token=$UC_TOKEN
+  --opensharing.catalog.unity.uri=http://localhost:8080/api/2.1/unity-catalog
 ```
+
+No `opensharing.admin.principals` to configure for `catalog.type=unity`: a provider-admin request
+just presents whatever bearer token their catalog already issued them (a real UC token, or, in a
+demo with `server.authorization=disable`, any JWT-shaped one), and OpenSharing asks the catalog's
+own `POST /opensharing/authorize` whose it is, fresh, on every request. `opensharing.admin.principals`
+is still how `catalog.type=local` works — the file catalog has no identity provider to delegate to.
 
 Or from source:
 
@@ -81,51 +87,68 @@ mvn -pl opensharing-server spring-boot:run -Dspring-boot.run.arguments="--server
 
 ## Embedded in Unity Catalog OSS
 
-The host supplies two integration points:
+The host supplies two integration points, both required:
 
 1. **`CatalogConnector`** — for UC, this is the *same* `UnityCatalogConnector` standalone mode
    uses, pointed at UC's own Armeria server on `127.0.0.1:<armeriaPort>` instead of a remote URL.
-2. **`ProviderIdentityResolver`** (optional) — maps the current UC-authenticated principal to a
-   `Caller` for provider-admin APIs, replacing `opensharing.admin.principals`.
+2. **`ProviderIdentityResolver`** — for UC, the *same* `UnityCatalogProviderIdentityResolver`
+   standalone mode's `catalog.type=unity` uses, pointed at the same loopback address. There is no
+   fallback to configured principals in embedded mode: nothing here is stored anywhere, so there is
+   nothing to fall back to.
 
 ```java
+URI ucLoopback = URI.create("http://127.0.0.1:" + armeriaPort + "/api/2.1/unity-catalog");
 OpenSharing.embedded()
-    .catalog(new UnityCatalogConnector(
-        URI.create("http://127.0.0.1:" + armeriaPort + "/api/2.1/unity-catalog"),
-        connectTimeout, requestTimeout))
-    .identityResolver(new UnityCatalogProviderIdentityResolver(...))
+    .catalog(new UnityCatalogConnector(ucLoopback, connectTimeout, requestTimeout, serverSecret))
+    .identityResolver(new UnityCatalogProviderIdentityResolver(ucLoopback, connectTimeout, requestTimeout))
     .property("opensharing.protocol-prefix", "/api/2.1/opensharing")
     .run();
 ```
 
-This is a real HTTP call, not a direct repository read, and that is deliberate: UC enforces its own
+Both are real HTTP calls, not a direct repository read, and that is deliberate: UC enforces its own
 grants (metastore / catalog / schema / table privileges) in a decorator wrapped around Armeria's
 HTTP dispatch (`UnityAccessDecorator`), not inside the repositories or service methods themselves —
 a repository call, or even a plain Java call into a UC service class, bypasses every grant check UC
-has. Going through the real endpoint, on the loopback address UC itself is reached on and presenting
-the caller's own bearer token, is what lets embedding reuse UC's authorization instead of
-reimplementing it. See "Authorization in embedded mode" below.
+has. Going through the real endpoints, on the loopback address UC itself is reached on, is what
+lets embedding reuse UC's authorization instead of reimplementing it. See "Provider identity: no
+stored credential, ever" below.
 
 Recipient protocol endpoints, share metadata (JPA), credential vending, and Delta/Iceberg serving
-stay in OpenSharing. Only catalog access and provider authentication are delegated to the host.
+stay in OpenSharing. Only catalog access and provider identity/authorization are delegated to the
+host.
 
-## Authorization in embedded mode
+## Provider identity: no stored credential, ever
 
-Every catalog operation OpenSharing performs on a provider's or recipient's behalf — resolving a
-table or schema, listing a shared schema's tables, minting storage credentials — is a real HTTP
-call from `UnityCatalogConnector` to UC's own Armeria server at `127.0.0.1:<armeriaPort>`,
-presenting the `CatalogCaller`'s own UC bearer token as `Authorization: Bearer ...`. That request
-passes through UC's normal decorator chain exactly as if it had arrived on UC's public port: UC's
-`UnityAccessDecorator` evaluates the same `@AuthorizeExpression` (metastore/catalog/schema/table
-`OWNER`, `USE_CATALOG`, `USE_SCHEMA`, `SELECT`, ...) it would for any other client. A principal with
-no grant on the asset gets UC's own `403 PERMISSION_DENIED`, which the connector turns into
-`AssetAccessDeniedException` — the same failure standalone mode reports when the remote catalog
-refuses a request, translated by the same, already-tested code
-(`UnityCatalogConnectorTest`).
+OpenSharing keeps no principal table and stores no provider's bearer token, at rest or otherwise —
+not encrypted, not hashed for later re-presentation, nothing. Every provider identity is either
+resolved fresh from the catalog on the request that needs it, or, for the file-backed `local`
+catalog (which has no identity provider to ask), read from a fixed, in-memory list built once from
+`opensharing.admin.principals`.
+
+For `unity` — standalone against a remote catalog, or embedded against a loopback one, same code
+either way — two calls carry the whole story, both real HTTP requests through UC's normal decorator
+chain exactly as if they'd arrived on UC's public port:
+
+- **A provider-admin write** (creating a share, adding a table, granting a permission, ...)
+  presents the live caller's own bearer token to UC's `POST /opensharing/authorize`, which returns
+  `{user_id, user_name, authorized}`. `CREATE_SHARE` / `CREATE_RECIPIENT` are asked only for the two
+  operations that create a new, otherwise-unowned object; every other request resolves identity
+  only, with OpenSharing enforcing its own ownership rule (only a share's or recipient's owner may
+  change it) rather than asking UC to decide that again on every call. Only `user_id` is ever
+  stored, as the object's owner — never the token.
+- **A recipient's read** (resolving a table, listing a shared schema, minting storage credentials)
+  has no owner token to present — the owner isn't the one asking, and never will be for this
+  request. `UnityCatalogConnector` presents its own configured identity instead
+  (`server.opensharing.server-secret` / `opensharing.catalog.unity.server-secret`) alongside the
+  owner's stored `user_id`, and UC's `AuthDecorator` evaluates the request as that user without
+  their token ever existing on the wire. A principal with no grant on the asset gets UC's own `403
+  PERMISSION_DENIED` either way, which the connector turns into `AssetAccessDeniedException` — the
+  same failure reported when the remote catalog refuses a request, translated by the same,
+  already-tested code (`UnityCatalogConnectorTest`).
 
 Nothing about embedding weakens this: there is no second, simplified authorization model to keep in
-sync with UC's, and a grant revoked in UC is enforced on the very next call, because it *is* UC
-answering.
+sync with UC's, and a grant revoked in UC is enforced on the very next call, since there is no
+separately stored credential that could still work after it.
 
 ## One process, one address
 
@@ -156,7 +179,7 @@ to its already-existing transcoder, not a change to OpenSharing itself.
 
 ## No datasource config of its own — it reads the host's
 
-OpenSharing's metadata (`os_principals`, `os_shares`, `os_shared_data_objects`, `os_recipients`,
+OpenSharing's metadata (`os_shares`, `os_shared_data_objects`, `os_recipients`,
 `os_recipient_tokens`, `os_share_permissions`, all prefixed `os_` so they never collide with a
 host's own tables) is stored via its own JPA/Hibernate model, independent of the host's schema. In
 embedded mode there is no `server.opensharing.datasource.url` (or equivalent) to set: the host is
@@ -193,8 +216,9 @@ Already the main seam (`catalog/CatalogConnector.java`). For UC embed, no new im
 needed at all: `OpenSharingLifecycle` (in the UC repository's `server-sharing` module) constructs
 the existing `io.opensharing.catalog.unity.UnityCatalogConnector` — the same class standalone mode
 uses against a remote Unity Catalog — pointed at `127.0.0.1:<armeriaPort>` instead of a configured
-`opensharing.catalog.unity.uri`. Every call still presents the `CatalogCaller`'s own bearer token,
-exactly as standalone mode does; only the address changes.
+`opensharing.catalog.unity.uri`. Every call still presents the same `CatalogCaller` credential
+standalone mode would (a live caller's bearer token, or on-behalf-of access for a recipient's
+read); only the address changes.
 
 ### `ProviderIdentityResolver`
 
@@ -205,7 +229,10 @@ public interface ProviderIdentityResolver {
 }
 ```
 
-When present, `AdminAuthenticationFilter` uses it before falling back to configured principals.
+Required in embedded mode — `AdminAuthenticationFilter` has no fallback to fall back to. For UC,
+also no new implementation needed: `OpenSharingLifecycle` constructs the existing
+`io.opensharing.catalog.unity.UnityCatalogProviderIdentityResolver`, pointed at the same loopback
+address as the connector above.
 
 ## Spring wiring
 
@@ -213,8 +240,7 @@ Beans gated on hosting mode:
 
 | Bean | Standalone | Embedded |
 |------|------------|----------|
-| `CatalogConfiguration` (auto connector) | yes | no — host supplies `CatalogConnector` |
-| `PrincipalProvisioner` | yes | no |
+| `CatalogConfiguration` (auto `CatalogConnector` + `ProviderIdentityResolver`) | yes | no — host supplies both |
 | `SharingRuntime` | yes | yes |
 | `EmbeddedStartupValidator` | no | yes |
 
@@ -228,8 +254,7 @@ From `server/` after UC integration is built in a sibling `unitycatalog` checkou
 # terminal A — build, configure, start UC with embedded OpenSharing
 UC_ROOT=~/unitycatalog ./scripts/demo-embedded-up.sh
 
-# terminal B — walkthrough (share, recipient, protocol)
-source ~/.opensharing-embedded-demo/demo.env
+# terminal B — walkthrough (share, recipient, protocol); it finds and sources demo.env on its own
 ./scripts/demo-embedded.sh
 # or step through while recording:
 PAUSE=ask ./scripts/demo-embedded.sh
