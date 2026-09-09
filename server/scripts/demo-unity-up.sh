@@ -11,6 +11,12 @@
 #   UC_PORT          port the catalog listens on                         (default 8080)
 #   MAVEN_PROXY_URL  Maven mirror; defaults to Databricks proxy on machines with no local mirror
 #   MVN_SETTINGS     explicit settings.xml; overrides everything above           (default none)
+#   UC_CLASSPATH     a classpath file from a local Unity Catalog build, used verbatim in place of
+#                    resolving UC_VERSION from Maven — for a feature this server needs that has not
+#                    reached a release yet, e.g. ~/unitycatalog/server-embedded/target/classpath
+#                    after `sbt serverEmbedded/Compile/dependencyClasspath` (or however that
+#                    checkout builds one); anything on the classpath at
+#                    io.unitycatalog.server.UnityCatalogServer's main() will do
 set -euo pipefail
 
 DEMO_HOME="${DEMO_HOME:-$HOME/.opensharing-demo}"
@@ -71,7 +77,10 @@ os.execvp(argv[0], argv)
 }
 
 step "Resolving Unity Catalog $UC_VERSION"
-if [[ -s "$DEMO_HOME/classpath.txt" ]]; then
+if [[ -n "${UC_CLASSPATH:-}" ]]; then
+  cp "$UC_CLASSPATH" "$DEMO_HOME/classpath.txt"
+  note "local build: $UC_CLASSPATH ($(tr ':' '\n' < "$DEMO_HOME/classpath.txt" | wc -l | tr -d ' ') jars, UC_VERSION ignored)"
+elif [[ -s "$DEMO_HOME/classpath.txt" ]]; then
   note "already resolved: $DEMO_HOME/classpath.txt"
 else
   if [[ -n "${MVN_SETTINGS:-}" ]]; then
@@ -252,7 +261,8 @@ authenticated by asking the catalog itself (POST \$UC_URI/opensharing/authorize)
 is — the same call standalone mode has always made for asset resolution, now also made for
 identity. \$UC_TOKEN (\$UC_ADMIN's own token, from demo.env) is what demo-unity.sh presents as
 PROVIDER_TOKEN; this requires a Unity Catalog build carrying that endpoint (not yet in a release
-as of this writing — see the OpenSharing-Unity Catalog embedding PR).
+as of this writing — see the OpenSharing-Unity Catalog embedding PR; run this script with
+UC_CLASSPATH pointed at a local build in the meantime).
 
 Its own store is a file under $SERVER_DIR/data, and it keeps what a run of the walkthrough
 put there. Delete it before recording, so the take starts from nothing:  rm -rf data
