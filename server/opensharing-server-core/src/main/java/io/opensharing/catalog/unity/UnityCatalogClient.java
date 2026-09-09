@@ -124,9 +124,12 @@ final class UnityCatalogClient {
    * CatalogCaller}'s: it is a live provider-admin request's own token, being authenticated for the
    * first time, not yet known to belong to anyone.
    *
-   * @return empty when the catalog answers 401: the token itself is not one it recognizes, which
-   *     for a provider-admin caller means exactly what it means for the catalog itself — reject the
-   *     request, not something for this client to have an opinion about
+   * @return empty when the catalog answers 401 or 403: the token itself is not one it recognizes,
+   *     or it recognizes it but its own authorization layer rejects the caller outright (for
+   *     example, a principal with no grants at all never reaches this server's own {authorized:
+   *     false} response body — the catalog's blanket "#principal != null" check on this endpoint
+   *     turns it away first, as 403). Either way that means exactly what it means for the catalog
+   *     itself — reject the request, not something for this client to have an opinion about
    */
   Optional<AuthorizeResult> authorize(String bearerToken, String privilege) {
     HttpRequest request =
@@ -142,7 +145,7 @@ final class UnityCatalogClient {
     try {
       return Optional.of(send(request, AuthorizeResult.class, "POST /opensharing/authorize"));
     } catch (UnityApiException e) {
-      if (e.status() == 401) {
+      if (e.status() == 401 || e.status() == 403) {
         return Optional.empty();
       }
       throw e;
