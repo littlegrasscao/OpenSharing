@@ -2,12 +2,15 @@ package io.opensharing.config;
 
 import io.opensharing.runtime.ConditionalOnHostingMode;
 import io.opensharing.runtime.HostingMode;
+import io.opensharing.runtime.ProviderIdentityResolver;
 import io.opensharing.catalog.CatalogConnector;
 import io.opensharing.catalog.CatalogException;
 import io.opensharing.catalog.local.LocalCatalogConnector;
 import io.opensharing.catalog.local.LocalCatalogFile;
 import io.opensharing.catalog.local.LocalCatalogLoader;
 import io.opensharing.catalog.unity.UnityCatalogConnector;
+import io.opensharing.catalog.unity.UnityCatalogProviderIdentityResolver;
+import io.opensharing.principal.ConfiguredPrincipalsIdentityResolver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -105,6 +108,31 @@ public class CatalogConfiguration {
               + "' must be a base url with no query or fragment, since each request appends its own");
     }
     return new UnityCatalogConnector(
-        parsed, config.getConnectTimeout(), config.getRequestTimeout());
+        parsed, config.getConnectTimeout(), config.getRequestTimeout(), config.getServerSecret());
+  }
+
+  /**
+   * Resolves a provider-admin request's caller: by asking the catalog whose token this is ({@code
+   * unity} — the same authorize call embedded mode makes, just against a remote address instead of
+   * a loopback one), or against a fixed, configured list ({@code local}, which has no catalog to
+   * ask instead). A deployment that talks to something else contributes its own {@code
+   * ProviderIdentityResolver} bean, which takes precedence over this one.
+   */
+  @Bean
+  @ConditionalOnMissingBean(ProviderIdentityResolver.class)
+  public ProviderIdentityResolver providerIdentityResolver(OpenSharingProperties properties) {
+    OpenSharingProperties.Catalog catalog = properties.getCatalog();
+    String type = catalog.getType() == null ? "" : catalog.getType().trim().toLowerCase(Locale.ROOT);
+    return switch (type) {
+      case LocalCatalogConnector.NAME ->
+          new ConfiguredPrincipalsIdentityResolver(properties.getAdmin().getPrincipals());
+      case UnityCatalogConnector.NAME -> {
+        OpenSharingProperties.Catalog.Unity config = catalog.getUnity();
+        yield new UnityCatalogProviderIdentityResolver(
+            URI.create(config.getUri().trim()), config.getConnectTimeout(), config.getRequestTimeout());
+      }
+      default ->
+          throw new IllegalStateException("unknown opensharing.catalog.type '" + catalog.getType() + "'");
+    };
   }
 }

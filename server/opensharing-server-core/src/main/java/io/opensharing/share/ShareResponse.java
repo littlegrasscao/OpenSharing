@@ -42,11 +42,11 @@ public record ShareResponse(
         share.getDisplayName(),
         share.getComment(),
         Map.copyOf(share.getProperties()),
-        share.getOwner().getId(),
+        share.getOwnerId(),
         share.getCreatedAt(),
-        share.getCreatedBy().getId(),
+        share.getCreatedBy(),
         share.getUpdatedAt(),
-        share.getUpdatedBy().getId(),
+        share.getUpdatedBy(),
         objects);
   }
 }

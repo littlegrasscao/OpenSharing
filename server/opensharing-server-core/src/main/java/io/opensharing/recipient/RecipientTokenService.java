@@ -3,7 +3,7 @@ package io.opensharing.recipient;
 import io.opensharing.auth.Secrets;
 import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
-import io.opensharing.principal.PrincipalEntity;
+import io.opensharing.principal.Caller;
 import io.opensharing.protocol.ProfileFile;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,7 +46,7 @@ public class RecipientTokenService {
    * superseded token that was never activated is always revoked at once, since nobody holds it.
    */
   public IssuedToken rotate(
-      RecipientEntity recipient, PrincipalEntity author, Instant expiresAt, Duration grace) {
+      RecipientEntity recipient, Caller author, Instant expiresAt, Duration grace) {
     Instant now = Instant.now();
     Duration window = grace != null ? grace : properties.getRecipientTokens().getRotationGrace();
     boolean immediate = window == null || window.isNegative() || window.isZero();
@@ -61,7 +61,7 @@ public class RecipientTokenService {
     return issue(recipient, author, expiresAt);
   }
 
-  IssuedToken issue(RecipientEntity recipient, PrincipalEntity author, Instant expiresAt) {
+  IssuedToken issue(RecipientEntity recipient, Caller author, Instant expiresAt) {
     Instant now = Instant.now();
     Instant expiration = expiresAt != null ? expiresAt : defaultExpiration(now);
     if (expiration != null && !expiration.isAfter(now)) {
@@ -71,7 +71,7 @@ public class RecipientTokenService {
     String nonce = Secrets.newActivationNonce();
     RecipientTokenEntity token = new RecipientTokenEntity();
     token.setRecipient(recipient);
-    token.setCreatedBy(author);
+    token.setCreatedBy(author.principalId());
     token.setActivationNonceHash(Secrets.sha256(nonce));
     token.setActivationExpiresAt(now.plus(activationTtl()));
     token.setExpiresAt(expiration);

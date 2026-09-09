@@ -2,14 +2,12 @@ package io.opensharing.recipient;
 
 import io.opensharing.ObjectNames;
 import io.opensharing.http.ApiException;
+import io.opensharing.principal.Caller;
 import io.opensharing.principal.Ownership;
-import io.opensharing.principal.PrincipalEntity;
-import io.opensharing.principal.PrincipalUsage;
 import io.opensharing.share.ShareStore;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -21,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
-public class RecipientStore implements PrincipalUsage {
+public class RecipientStore {
 
   private final RecipientRepository recipients;
   private final RecipientTokenRepository tokens;
@@ -50,7 +48,7 @@ public class RecipientStore implements PrincipalUsage {
    * @param tokenExpiresAt when the first token expires, or null for the configured default
    */
   public NewRecipient create(
-      PrincipalEntity author,
+      Caller author,
       String name,
       AuthType authType,
       List<String> ipAccessList,
@@ -68,19 +66,16 @@ public class RecipientStore implements PrincipalUsage {
     recipient.setAuthType(authType);
     recipient.setIpAccessList(IpAccessList.validate(ipAccessList));
     recipient.setProperties(properties);
-    recipient.setOwner(author);
-    recipient.setCreatedBy(author);
-    recipient.setUpdatedBy(author);
+    recipient.setOwnerId(author.principalId());
+    recipient.setCreatedBy(author.principalId());
+    recipient.setUpdatedBy(author.principalId());
     recipients.save(recipient);
     return new NewRecipient(recipient, tokenService.issue(recipient, author, tokenExpiresAt));
   }
 
   /** Only non-null fields are applied. */
   public RecipientEntity update(
-      PrincipalEntity author,
-      String name,
-      List<String> ipAccessList,
-      Map<String, String> properties) {
+      Caller author, String name, List<String> ipAccessList, Map<String, String> properties) {
     RecipientEntity recipient = requireOwned(name, author);
     if (ipAccessList != null) {
       recipient.setIpAccessList(IpAccessList.validate(ipAccessList));
@@ -88,7 +83,7 @@ public class RecipientStore implements PrincipalUsage {
     if (properties != null) {
       recipient.setProperties(properties);
     }
-    recipient.setUpdatedBy(author);
+    recipient.setUpdatedBy(author.principalId());
     return recipients.save(recipient);
   }
 
@@ -101,10 +96,10 @@ public class RecipientStore implements PrincipalUsage {
 
   /** Loads a recipient to be changed, which only its owner may do. */
   @Transactional(readOnly = true)
-  public RecipientEntity requireOwned(String name, PrincipalEntity caller) {
+  public RecipientEntity requireOwned(String name, Caller caller) {
     RecipientEntity recipient = require(name);
     Ownership.requireOwner(
-        recipient.getOwner(), caller, "recipient '" + recipient.getName() + "'");
+        recipient.getOwnerId(), caller, "recipient '" + recipient.getName() + "'");
     return recipient;
   }
 
@@ -121,20 +116,10 @@ public class RecipientStore implements PrincipalUsage {
   }
 
   /** Deleting a recipient revokes its tokens and every permission it held. */
-  public void delete(String name, PrincipalEntity caller) {
+  public void delete(String name, Caller caller) {
     RecipientEntity recipient = requireOwned(name, caller);
     tokens.deleteByRecipient(recipient);
     shares.revokeAll(recipient);
     recipients.delete(recipient);
-  }
-
-  @Override
-  @Transactional(readOnly = true)
-  public Optional<String> describeReferencesTo(PrincipalEntity principal) {
-    return PrincipalUsage.phrase(
-        PrincipalUsage.count(
-            recipients.countByOwnerOrCreatedByOrUpdatedBy(principal, principal, principal),
-            "recipient"),
-        PrincipalUsage.count(tokens.countByCreatedBy(principal), "issued token"));
   }
 }

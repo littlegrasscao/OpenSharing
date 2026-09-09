@@ -4,9 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opensharing.http.ErrorCodes;
 import io.opensharing.http.ErrorResponse;
 import io.opensharing.principal.Caller;
-import io.opensharing.principal.PrincipalEntity;
-import io.opensharing.principal.PrincipalStore;
-import io.opensharing.principal.PrincipalType;
 import io.opensharing.runtime.ProviderIdentityResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -19,66 +16,38 @@ import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Authenticates a provider-admin request as a configured principal.
+ * Authenticates a provider-admin request as the {@link Caller} its {@link ProviderIdentityResolver}
+ * resolves it to.
  *
- * <p>Principals are provisioned from {@code opensharing.admin.principals} at startup rather than
- * than through an admin API, so every request here must present one of those bearer tokens.
+ * <p>There is exactly one resolver in any deployment — the catalog itself for {@code unity} (a fresh
+ * call to its own authorize endpoint on every request, embedded or standalone, over a loopback or a
+ * remote address), or a fixed configured list for {@code local}, which has no catalog to delegate to
+ * — never both and never neither. This filter holds no identity store of its own: nothing here is
+ * provisioned, cached, or written to a database, so there is nothing about a caller left behind once
+ * their request is over.
  */
 public class AdminAuthenticationFilter extends OncePerRequestFilter {
 
-  private final PrincipalStore principals;
   private final ProviderIdentityResolver identityResolver;
   private final ObjectMapper objectMapper;
 
   public AdminAuthenticationFilter(
-      PrincipalStore principals,
-      ObjectMapper objectMapper,
-      ProviderIdentityResolver identityResolver) {
-    this.principals = principals;
-    this.objectMapper = objectMapper;
+      ProviderIdentityResolver identityResolver, ObjectMapper objectMapper) {
     this.identityResolver = identityResolver;
-  }
-
-  public AdminAuthenticationFilter(PrincipalStore principals, ObjectMapper objectMapper) {
-    this(principals, objectMapper, null);
+    this.objectMapper = objectMapper;
   }
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    if (identityResolver != null) {
-      Optional<Caller> resolved = identityResolver.resolve(request);
-      if (resolved.isPresent()) {
-        request.setAttribute(Caller.REQUEST_ATTRIBUTE, provisioned(resolved.get()));
-        chain.doFilter(request, response);
-        return;
-      }
-    }
-    Optional<String> presented = BearerTokens.from(request);
-    if (presented.isEmpty()) {
-      reject(response, "a provider-admin bearer token is required");
+    Optional<Caller> resolved = identityResolver.resolve(request);
+    if (resolved.isEmpty()) {
+      reject(response, "a provider-admin bearer token naming a known, authorized principal is required");
       return;
     }
-    Optional<PrincipalEntity> principal = principals.findByToken(presented.get());
-    if (principal.isEmpty()) {
-      reject(response, "the bearer token does not belong to a known principal");
-      return;
-    }
-    request.setAttribute(Caller.REQUEST_ATTRIBUTE, Caller.of(principal.get(), presented.get()));
+    request.setAttribute(Caller.REQUEST_ATTRIBUTE, resolved.get());
     chain.doFilter(request, response);
-  }
-
-  /**
-   * The host resolves a principal's identity, not its row in this server's own store. Provisioning
-   * it here — same as a configured {@code opensharing.admin.principals} entry — is what lets {@link
-   * io.opensharing.principal.PrincipalStore#require} find it by id later in the same request, and
-   * keeps its stored catalog credential current with whatever the host just presented.
-   */
-  private Caller provisioned(Caller resolved) {
-    PrincipalEntity principal =
-        principals.provision(PrincipalType.USER, resolved.name(), resolved.bearerToken());
-    return Caller.of(principal, resolved.bearerToken());
   }
 
   private void reject(HttpServletResponse response, String message) throws IOException {

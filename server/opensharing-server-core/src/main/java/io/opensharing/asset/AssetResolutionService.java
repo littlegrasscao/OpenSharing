@@ -18,7 +18,6 @@ import io.opensharing.catalog.UnsupportedAssetTypeException;
 import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
 import io.opensharing.http.ErrorCodes;
-import io.opensharing.principal.PrincipalStore;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,19 +40,16 @@ public class AssetResolutionService {
 
   private final CatalogConnector catalog;
   private final SharedDataObjectStore objects;
-  private final PrincipalStore principals;
   private final OpenSharingProperties properties;
   private final UrlSigners signers;
 
   public AssetResolutionService(
       CatalogConnector catalog,
       SharedDataObjectStore objects,
-      PrincipalStore principals,
       OpenSharingProperties properties,
       UrlSigners signers) {
     this.catalog = catalog;
     this.objects = objects;
-    this.principals = principals;
     this.properties = properties;
     this.signers = signers;
   }
@@ -99,11 +95,15 @@ public class AssetResolutionService {
    * <p>A recipient is nobody the catalog has heard of, so they cannot be the caller. The provider who
    * owns the share can be, and is the right one — a recipient reads by virtue of that provider's
    * access, so a provider who loses it should take their recipients' access with them, which is what
-   * asking as them each time gets. An owner with no stored credential cannot be asked as, and the read
-   * fails rather than falling back to an identity whose access outlives theirs.
+   * asking as them each time gets. There is no stored credential to ask with, and none needed: the
+   * owner's id, recorded on the share when it was created, is enough for a connector that can ask the
+   * catalog on their behalf — see {@code CatalogCaller.Credential.OnBehalfOf}. A grant revoked in the
+   * catalog therefore takes effect on the very next read, since there is no separately stored
+   * credential that could still work after it.
    */
   private CatalogCaller shareOwner(SharedDataObjectEntity object) {
-    return principals.catalogCallerFor(object.getShare().getOwner());
+    String ownerId = object.getShare().getOwnerId();
+    return CatalogCaller.onBehalfOf(ownerId, ownerId);
   }
 
   /**

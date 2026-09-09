@@ -3,8 +3,6 @@ package io.opensharing.asset;
 import io.opensharing.ObjectNames;
 import io.opensharing.catalog.AssetType;
 import io.opensharing.http.ApiException;
-import io.opensharing.principal.PrincipalEntity;
-import io.opensharing.principal.PrincipalUsage;
 import io.opensharing.share.ShareEntity;
 import java.util.List;
 import java.util.Optional;
@@ -20,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
-public class SharedDataObjectStore implements PrincipalUsage {
+public class SharedDataObjectStore {
 
   private final SharedDataObjectRepository objects;
 
@@ -141,13 +139,5 @@ public class SharedDataObjectStore implements PrincipalUsage {
 
   public void deleteAllIn(ShareEntity share) {
     objects.deleteByShare(share);
-  }
-
-  @Override
-  @Transactional(readOnly = true)
-  public Optional<String> describeReferencesTo(PrincipalEntity principal) {
-    return PrincipalUsage.phrase(
-        PrincipalUsage.count(
-            objects.countByAddedByOrUpdatedBy(principal, principal), "shared object"));
   }
 }

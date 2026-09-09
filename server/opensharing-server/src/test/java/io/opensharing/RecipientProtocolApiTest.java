@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -14,7 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -75,46 +73,6 @@ class RecipientProtocolApiTest extends ServerTestBase {
                 .contentType("application/json")
                 .content("{\"operation\":\"READ\"}"))
         .andExpect(status().isOk());
-  }
-
-  /**
-   * A principal registered before the login token was also kept for the catalog has nothing to ask it
-   * with, which no API call can produce any more — hence the direct write. The read stops rather than
-   * quietly going out as the server, whose access nobody granted and would outlive what it stood in
-   * for. What the recipient is told says that much and no more: which provider is short a credential,
-   * and how to fix it, are for the log.
-   */
-  @Test
-  void refusesToServeWhenNothingIsStoredToAskTheCatalogWith() throws Exception {
-    String sealed =
-        jdbc.queryForObject(
-            "select catalog_credential from os_principals where name_lower = ?",
-            String.class,
-            ALICE.toLowerCase(Locale.ROOT));
-    jdbc.update("update os_principals set catalog_credential = null where name_lower = ?",
-        ALICE.toLowerCase(Locale.ROOT));
-
-    try {
-      refusedRead();
-    } finally {
-      jdbc.update("update os_principals set catalog_credential = ? where name_lower = ?",
-          sealed, ALICE.toLowerCase(Locale.ROOT));
-    }
-  }
-
-  private void refusedRead() throws Exception {
-    mvc.perform(
-            post(PROTOCOL_BASE
-                    + "/shares/"
-                    + share
-                    + "/schemas/sales/tables/orders/temporary-table-credentials")
-                .header("Authorization", "Bearer " + token)
-                .contentType("application/json")
-                .content("{\"operation\":\"READ\"}"))
-        .andExpect(status().isInternalServerError())
-        .andExpect(jsonPath("$.errorCode").value("INTERNAL_ERROR"))
-        .andExpect(jsonPath("$.message").value(containsString("no credential stored")))
-        .andExpect(jsonPath("$.message").value(not(containsString(ALICE))));
   }
 
   @Test

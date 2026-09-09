@@ -2,7 +2,6 @@ package io.opensharing.recipient;
 
 import io.opensharing.BaseEntity;
 import io.opensharing.ObjectNames;
-import io.opensharing.principal.PrincipalEntity;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -11,7 +10,6 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -39,17 +37,20 @@ public class RecipientEntity extends BaseEntity {
   @Column(name = "auth_type", nullable = false, length = 16)
   private AuthType authType = AuthType.TOKEN;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "owner_id", nullable = false)
-  private PrincipalEntity owner;
+  /**
+   * A catalog's own identity for whoever created this recipient — for the {@code unity} connector,
+   * a Unity Catalog user id; for {@code local}, whatever the configured principal resolves to.
+   * Never a foreign key: there is no principal table to reference, on purpose — see {@code
+   * AdminAuthenticationFilter}.
+   */
+  @Column(name = "owner_id", nullable = false, length = 255)
+  private String ownerId;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "created_by", nullable = false)
-  private PrincipalEntity createdBy;
+  @Column(name = "created_by", nullable = false, length = 255)
+  private String createdBy;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "updated_by", nullable = false)
-  private PrincipalEntity updatedBy;
+  @Column(name = "updated_by", nullable = false, length = 255)
+  private String updatedBy;
 
   /** CIDR blocks the recipient may connect from. Empty means anywhere. */
   @ElementCollection(fetch = FetchType.EAGER)
@@ -88,27 +89,27 @@ public class RecipientEntity extends BaseEntity {
     this.authType = authType;
   }
 
-  public PrincipalEntity getOwner() {
-    return owner;
+  public String getOwnerId() {
+    return ownerId;
   }
 
-  public void setOwner(PrincipalEntity owner) {
-    this.owner = owner;
+  public void setOwnerId(String ownerId) {
+    this.ownerId = ownerId;
   }
 
-  public PrincipalEntity getCreatedBy() {
+  public String getCreatedBy() {
     return createdBy;
   }
 
-  public void setCreatedBy(PrincipalEntity createdBy) {
+  public void setCreatedBy(String createdBy) {
     this.createdBy = createdBy;
   }
 
-  public PrincipalEntity getUpdatedBy() {
+  public String getUpdatedBy() {
     return updatedBy;
   }
 
-  public void setUpdatedBy(PrincipalEntity updatedBy) {
+  public void setUpdatedBy(String updatedBy) {
     this.updatedBy = updatedBy;
   }
 

@@ -1,6 +1,5 @@
 # Defaults for a local run. Any key here can be overridden per environment without editing the file:
-# pass --the.key.path=value as an argument, or set the upper-case underscored form of the path, such as
-# OPENSHARING_SECURITY_CREDENTIAL_ENCRYPTION_KEY for opensharing.security.credential-encryption-key.
+# pass --the.key.path=value as an argument, or set the upper-case underscored form of the path.
 spring:
   application:
     name: opensharing-server
@@ -40,12 +39,6 @@ opensharing:
     principals: []
   provider:
     base-path: /api/2.1/opensharing/provider
-  security:
-    # Base64 AES key (16, 24 or 32 bytes) that a principal's catalog credential is encrypted with, so
-    # the server can present it to the catalog while serving a recipient. Belongs in an environment
-    # variable or a mounted secret, not here. Required: while it is blank no principal can be
-    # registered, since there would be nothing to ask the catalog with once their request is over.
-    credential-encryption-key: ""
   activation:
     base-path: /api/2.1/opensharing/activation
     ttl: 72h

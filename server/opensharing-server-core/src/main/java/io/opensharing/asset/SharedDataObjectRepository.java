@@ -1,7 +1,6 @@
 package io.opensharing.asset;
 
 import io.opensharing.catalog.AssetType;
-import io.opensharing.principal.PrincipalEntity;
 import io.opensharing.share.ShareEntity;
 import java.util.List;
 import java.util.Optional;
@@ -73,8 +72,6 @@ public interface SharedDataObjectRepository extends JpaRepository<SharedDataObje
 
   List<SharedDataObjectEntity> findByShareAndSharedAsSchemaLowerAndTypeAndStatusOrderBySharedAsNameLowerAsc(
       ShareEntity share, String sharedAsSchemaLower, AssetType type, SharedObjectStatus status);
-
-  long countByAddedByOrUpdatedBy(PrincipalEntity addedBy, PrincipalEntity updatedBy);
 
   void deleteByShare(ShareEntity share);
 

@@ -24,6 +24,6 @@ public record SharePermissionResponse(
         permission.getRecipient().getName(),
         permission.getPrivilege(),
         permission.getCreatedAt(),
-        permission.getGrantedBy().getId());
+        permission.getGrantedBy());
   }
 }

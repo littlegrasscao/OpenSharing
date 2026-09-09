@@ -3,8 +3,6 @@ package io.opensharing.recipient;
 import io.opensharing.http.ListResponse;
 import io.opensharing.http.Listings;
 import io.opensharing.principal.Caller;
-import io.opensharing.principal.PrincipalEntity;
-import io.opensharing.principal.PrincipalStore;
 import io.opensharing.share.SharePermissionResponse;
 import io.opensharing.share.ShareStore;
 import jakarta.validation.Valid;
@@ -29,19 +27,16 @@ public class RecipientAdminController {
 
   private final RecipientStore recipients;
   private final RecipientTokenService tokenService;
-  private final PrincipalStore principals;
   private final ShareStore shares;
   private final Listings listings;
 
   public RecipientAdminController(
       RecipientStore recipients,
       RecipientTokenService tokenService,
-      PrincipalStore principals,
       ShareStore shares,
       Listings listings) {
     this.recipients = recipients;
     this.tokenService = tokenService;
-    this.principals = principals;
     this.shares = shares;
     this.listings = listings;
   }
@@ -53,7 +48,7 @@ public class RecipientAdminController {
       Caller caller, @Valid @RequestBody CreateRecipientRequest request) {
     return CreatedRecipientResponse.from(
         recipients.create(
-            principals.require(caller),
+            caller,
             request.name(),
             request.authType(),
             request.ipAccessList(),
@@ -79,13 +74,12 @@ public class RecipientAdminController {
       @PathVariable String recipient,
       @RequestBody UpdateRecipientRequest request) {
     return withTokens(
-        recipients.update(
-            principals.require(caller), recipient, request.ipAccessList(), request.properties()));
+        recipients.update(caller, recipient, request.ipAccessList(), request.properties()));
   }
 
   @DeleteMapping("/{recipient}")
   public ResponseEntity<Void> delete(Caller caller, @PathVariable String recipient) {
-    recipients.delete(recipient, principals.require(caller));
+    recipients.delete(recipient, caller);
     return ResponseEntity.noContent().build();
   }
 
@@ -100,11 +94,10 @@ public class RecipientAdminController {
       @PathVariable String recipient,
       @RequestBody(required = false) RotateTokenRequest request) {
     RotateTokenRequest effective = request == null ? RotateTokenRequest.DEFAULTS : request;
-    PrincipalEntity author = principals.require(caller);
     RecipientTokenService.IssuedToken issued =
         tokenService.rotate(
-            recipients.requireOwned(recipient, author),
-            author,
+            recipients.requireOwned(recipient, caller),
+            caller,
             effective.expiresAt(),
             effective.grace());
     return IssuedTokenResponse.from(issued.token(), issued.activationUrl());

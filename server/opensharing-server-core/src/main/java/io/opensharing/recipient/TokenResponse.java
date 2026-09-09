@@ -25,7 +25,7 @@ public record TokenResponse(
         token.isActivated(),
         token.getActivationExpiresAt(),
         token.getCreatedAt(),
-        token.getCreatedBy().getId(),
+        token.getCreatedBy(),
         token.getExpiresAt(),
         token.getSupersededAt(),
         token.getRevokedAt());

@@ -5,9 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import io.opensharing.asset.storage.LocalFileUrlSigner;
 import io.opensharing.asset.storage.S3UrlSigner;
@@ -30,8 +28,6 @@ import io.opensharing.catalog.TableFormat;
 import io.opensharing.catalog.UnsupportedAssetTypeException;
 import io.opensharing.config.OpenSharingProperties;
 import io.opensharing.http.ApiException;
-import io.opensharing.principal.PrincipalEntity;
-import io.opensharing.principal.PrincipalStore;
 import io.opensharing.share.ShareEntity;
 import java.time.Duration;
 import java.util.List;
@@ -49,9 +45,8 @@ import org.springframework.http.HttpStatus;
 class AssetResolutionServiceTest {
 
   private static final String NAME = "main.sales.orders";
-  private static final String OWNER = "alice@example.com";
-  private static final CatalogCaller OWNER_CALLER =
-      CatalogCaller.withBearerToken(OWNER, "alice-catalog-credential");
+  private static final String OWNER = "alice-owner-id";
+  private static final CatalogCaller OWNER_CALLER = CatalogCaller.onBehalfOf(OWNER, OWNER);
 
   @Test
   void recordsThatASourceHasGoneMissing() {
@@ -111,22 +106,20 @@ class AssetResolutionServiceTest {
         service(
             lookup -> ResolvedAsset.builder(AssetType.TABLE, lookup.identifier()).build(),
             request -> List.of(),
-            OWNER_CALLER,
             asked);
 
     resolution.resolveForServing(object);
 
     assertEquals(OWNER, asked.get().name(), "the recipient is nobody the catalog knows");
     assertEquals(
-        "alice-catalog-credential",
-        ((CatalogCaller.Credential.BearerToken) asked.get().credential()).token());
+        OWNER,
+        ((CatalogCaller.Credential.OnBehalfOf) asked.get().credential()).catalogUserId(),
+        "there is no stored credential to present, only the owner's own catalog id");
   }
 
   private static SharedDataObjectEntity sharedObject() {
-    PrincipalEntity owner = new PrincipalEntity();
-    owner.setName(OWNER);
     ShareEntity share = new ShareEntity();
-    share.setOwner(owner);
+    share.setOwnerId(OWNER);
     SharedDataObjectEntity object = new SharedDataObjectEntity();
     object.setShare(share);
     object.setName(NAME);
@@ -309,13 +302,12 @@ class AssetResolutionServiceTest {
   private static AssetResolutionService service(
       Function<AssetLookup, ResolvedAsset> resolveAsset,
       Function<CredentialRequest, List<StorageCredentials>> vend) {
-    return service(resolveAsset, vend, OWNER_CALLER, new AtomicReference<>());
+    return service(resolveAsset, vend, new AtomicReference<>());
   }
 
   private static AssetResolutionService service(
       Function<AssetLookup, ResolvedAsset> resolveAsset,
       Function<CredentialRequest, List<StorageCredentials>> vend,
-      CatalogCaller ownerCaller,
       AtomicReference<CatalogCaller> asked) {
     CatalogConnector catalog =
         new CatalogConnector() {
@@ -337,12 +329,9 @@ class AssetResolutionServiceTest {
             return vend.apply(request);
           }
         };
-    PrincipalStore principals = mock(PrincipalStore.class);
-    when(principals.catalogCallerFor(any())).thenReturn(ownerCaller);
     return new AssetResolutionService(
         catalog,
         mock(SharedDataObjectStore.class),
-        principals,
         new OpenSharingProperties(),
         // The signers a real deployment has for the clouds these tests name locations on.
         new UrlSigners(List.of(new S3UrlSigner(new OpenSharingProperties()), new LocalFileUrlSigner())));

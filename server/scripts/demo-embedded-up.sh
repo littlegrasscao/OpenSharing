@@ -11,7 +11,8 @@
 #                    (default 8099)
 #   MVN_SETTINGS     Maven settings for OpenSharing build  (default server/.mvn/local-mirror-settings.xml when present)
 #   MAVEN_PROXY_URL  Maven mirror for UC sbt               (default Databricks proxy when unset)
-#   CREDENTIAL_KEY   AES key sealing a principal's catalog credential (default: a fixed demo key)
+#   SERVER_SECRET    OpenSharing's own identity for on-behalf-of catalog access; only load-bearing
+#                    with server.authorization=enable      (default: a fixed demo secret)
 #   PROVIDER         name the provider's minted token is issued for (default admin@unitycatalog.local)
 set -euo pipefail
 
@@ -22,7 +23,7 @@ OS_INTERNAL_PORT="${OS_INTERNAL_PORT:-8099}"
 UC_URI="http://localhost:$UC_PORT/api/2.1/unity-catalog"
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE="$SERVER_DIR/opensharing-server-core/src/test/resources/delta-table/stocked"
-CREDENTIAL_KEY="${CREDENTIAL_KEY:-b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE=}"
+SERVER_SECRET="${SERVER_SECRET:-demo-opensharing-server-secret}"
 PROVIDER="${PROVIDER:-admin@unitycatalog.local}"
 
 step() { printf '\n\033[1;36m== %s\033[0m\n' "$1"; }
@@ -98,13 +99,19 @@ step "Configuring Unity Catalog (embedded OpenSharing routed through port $UC_PO
 # connects to that same database. Safe within one JVM (H2 keeps one shared in-memory Database
 # instance per canonical file path per process; a real database server is designed for exactly
 # this), and none of OpenSharing's tables (all prefixed os_) collide with UC's (uc_-prefixed) ones.
+#
+# No stored credential of any kind either: OpenSharing asks UC's own new authorize API whose
+# token this is on every provider-admin request, and (server.opensharing.server-secret) presents
+# its own identity instead of a token for a recipient's read, where there is no owner token to
+# present. This demo runs with authorization disabled, so the secret is set but not load-bearing
+# — see server.authorization=enable in the README for what it is for.
 cat > "$DEMO_HOME/etc/conf/server.properties" <<PROPERTIES
 server.env=dev
 server.authorization=disable
 server.opensharing.enabled=true
 server.opensharing.port=$OS_INTERNAL_PORT
 server.opensharing.protocol-prefix=/api/2.1/opensharing
-server.opensharing.credential-encryption-key=$CREDENTIAL_KEY
+server.opensharing.server-secret=$SERVER_SECRET
 PROPERTIES
 cat > "$DEMO_HOME/etc/conf/hibernate.properties" <<'PROPERTIES'
 hibernate.connection.driver_class=org.h2.Driver
@@ -181,10 +188,12 @@ uc GET /tables/main.sales.orders \
   | jq -c '{full_name:"main.sales.orders",table_type,data_source_format,storage_location}'
 
 step "Minting the provider's token"
-# Authorization is disabled in this demo, so nothing verifies this token's signature — the
-# provider-admin caller is simply whoever presents it. Minting a real JWT (rather than an
-# arbitrary string) with subject $PROVIDER means OpenSharing attributes shares and grants to
-# that name, without any UC-side config saying so: see UnityCatalogProviderIdentityResolver.
+# OpenSharing calls UC's own POST .../opensharing/authorize with whatever token a provider-admin
+# request presents, on every request — never storing or configuring an identity of its own (see
+# io.opensharing.catalog.unity.UnityCatalogProviderIdentityResolver). Authorization is disabled in
+# this demo, so that call doesn't verify the signature either, only reads this token's own JWT
+# subject — minting a real JWT (rather than an arbitrary string) with subject $PROVIDER is what
+# attributes shares and grants to that name, with no UC-side config saying so.
 PROVIDER_TOKEN="$(java -cp "$(embedded_classpath)" "$SERVER_DIR/scripts/MintToken.java" \
   "$DEMO_HOME/etc/conf" "$PROVIDER")"
 note "signed by UC's own key, subject '$PROVIDER'"

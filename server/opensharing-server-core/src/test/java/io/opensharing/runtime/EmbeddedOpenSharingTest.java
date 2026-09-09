@@ -20,8 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
     properties = {
       "spring.datasource.url=jdbc:h2:mem:opensharing-embedded;DB_CLOSE_DELAY=-1",
       "spring.jpa.hibernate.ddl-auto=create-drop",
-      "opensharing.hosting.mode=embedded",
-      "opensharing.security.credential-encryption-key=c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE="
+      "opensharing.hosting.mode=embedded"
     })
 @AutoConfigureMockMvc
 class EmbeddedOpenSharingTest {

@@ -6,7 +6,6 @@ import io.opensharing.catalog.AccessMode;
 import io.opensharing.catalog.AssetType;
 import io.opensharing.catalog.ResolvedAsset;
 import io.opensharing.catalog.TableFormat;
-import io.opensharing.principal.PrincipalEntity;
 import io.opensharing.share.ShareEntity;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
@@ -118,13 +117,12 @@ public class SharedDataObjectEntity extends BaseEntity {
   @Column(name = "status", nullable = false, length = 32)
   private SharedObjectStatus status = SharedObjectStatus.ACTIVE;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "added_by", nullable = false)
-  private PrincipalEntity addedBy;
+  /** A catalog's own identity for whoever added this object — see {@code ShareEntity}. */
+  @Column(name = "added_by", nullable = false, length = 255)
+  private String addedBy;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "updated_by", nullable = false)
-  private PrincipalEntity updatedBy;
+  @Column(name = "updated_by", nullable = false, length = 255)
+  private String updatedBy;
 
   @Column(name = "storage_location", length = 2048)
   private String storageLocation;
@@ -284,19 +282,19 @@ public class SharedDataObjectEntity extends BaseEntity {
     this.status = status;
   }
 
-  public PrincipalEntity getAddedBy() {
+  public String getAddedBy() {
     return addedBy;
   }
 
-  public void setAddedBy(PrincipalEntity addedBy) {
+  public void setAddedBy(String addedBy) {
     this.addedBy = addedBy;
   }
 
-  public PrincipalEntity getUpdatedBy() {
+  public String getUpdatedBy() {
     return updatedBy;
   }
 
-  public void setUpdatedBy(PrincipalEntity updatedBy) {
+  public void setUpdatedBy(String updatedBy) {
     this.updatedBy = updatedBy;
   }
 

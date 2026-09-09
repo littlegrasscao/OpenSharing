@@ -2,9 +2,8 @@ package io.opensharing.share;
 
 import io.opensharing.ObjectNames;
 import io.opensharing.http.ApiException;
+import io.opensharing.principal.Caller;
 import io.opensharing.principal.Ownership;
-import io.opensharing.principal.PrincipalEntity;
-import io.opensharing.principal.PrincipalUsage;
 import io.opensharing.recipient.RecipientEntity;
 import io.opensharing.asset.SharedDataObjectStore;
 import java.util.List;
@@ -21,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
-public class ShareStore implements PrincipalUsage {
+public class ShareStore {
 
   private final ShareRepository shares;
   private final SharePermissionRepository permissions;
@@ -37,7 +36,7 @@ public class ShareStore implements PrincipalUsage {
   }
 
   public ShareEntity create(
-      PrincipalEntity author,
+      Caller author,
       String name,
       String displayName,
       String comment,
@@ -51,15 +50,15 @@ public class ShareStore implements PrincipalUsage {
     share.setDisplayName(displayName);
     share.setComment(comment);
     share.setProperties(properties);
-    share.setOwner(author);
-    share.setCreatedBy(author);
-    share.setUpdatedBy(author);
+    share.setOwnerId(author.principalId());
+    share.setCreatedBy(author.principalId());
+    share.setUpdatedBy(author.principalId());
     return shares.save(share);
   }
 
   /** Only non-null fields are applied. */
   public ShareEntity update(
-      PrincipalEntity author,
+      Caller author,
       ShareEntity share,
       String displayName,
       String comment,
@@ -73,7 +72,7 @@ public class ShareStore implements PrincipalUsage {
     if (properties != null) {
       share.setProperties(properties);
     }
-    share.setUpdatedBy(author);
+    share.setUpdatedBy(author.principalId());
     return shares.save(share);
   }
 
@@ -90,9 +89,9 @@ public class ShareStore implements PrincipalUsage {
 
   /** Loads a share to be changed, which only its owner may do. */
   @Transactional(readOnly = true)
-  public ShareEntity requireOwned(String name, PrincipalEntity caller) {
+  public ShareEntity requireOwned(String name, Caller caller) {
     ShareEntity share = require(name);
-    Ownership.requireOwner(share.getOwner(), caller, "share '" + share.getName() + "'");
+    Ownership.requireOwner(share.getOwnerId(), caller, "share '" + share.getName() + "'");
     return share;
   }
 
@@ -102,7 +101,7 @@ public class ShareStore implements PrincipalUsage {
   }
 
   /** Deleting a share takes its shared objects and its permissions with it. */
-  public void delete(String name, PrincipalEntity caller) {
+  public void delete(String name, Caller caller) {
     ShareEntity share = requireOwned(name, caller);
     objects.deleteAllIn(share);
     permissions.deleteByShare(share);
@@ -111,10 +110,7 @@ public class ShareStore implements PrincipalUsage {
 
   /** Granting a privilege the recipient already holds leaves the original grant untouched. */
   public SharePermissionEntity grant(
-      PrincipalEntity author,
-      ShareEntity share,
-      RecipientEntity recipient,
-      SharePrivilege privilege) {
+      Caller author, ShareEntity share, RecipientEntity recipient, SharePrivilege privilege) {
     return permissions
         .findByShareAndRecipientAndPrivilege(share, recipient, privilege)
         .orElseGet(
@@ -123,7 +119,7 @@ public class ShareStore implements PrincipalUsage {
               permission.setShare(share);
               permission.setRecipient(recipient);
               permission.setPrivilege(privilege);
-              permission.setGrantedBy(author);
+              permission.setGrantedBy(author.principalId());
               return permissions.save(permission);
             });
   }
@@ -170,14 +166,5 @@ public class ShareStore implements PrincipalUsage {
   public boolean isSharedWith(ShareEntity share, RecipientEntity recipient) {
     return permissions.existsByShareAndRecipientAndPrivilege(
         share, recipient, SharePrivilege.SELECT);
-  }
-
-  @Override
-  @Transactional(readOnly = true)
-  public Optional<String> describeReferencesTo(PrincipalEntity principal) {
-    return PrincipalUsage.phrase(
-        PrincipalUsage.count(
-            shares.countByOwnerOrCreatedByOrUpdatedBy(principal, principal, principal), "share"),
-        PrincipalUsage.count(permissions.countByGrantedBy(principal), "granted permission"));
   }
 }

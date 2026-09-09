@@ -242,13 +242,17 @@ cat <<NEXT
     --server.port=8099 \\
     --opensharing.activation.external-base-url=http://localhost:8099 \\
     --opensharing.catalog.type=unity \\
-    --opensharing.catalog.unity.uri=$UC_URI \\
-    --opensharing.admin.principals[0].name=$ADMIN \\
-    --opensharing.admin.principals[0].bearer-token=$TOKEN \\
-    --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
+    --opensharing.catalog.unity.uri=$UC_URI"
 
 The port matters twice over: the catalog is on $UC_PORT, which is where this server would
 otherwise sit, and the activation url a recipient is handed has to point back here.
+
+No admin principal to configure: with catalog.type=unity, every provider-admin request is
+authenticated by asking the catalog itself (POST \$UC_URI/opensharing/authorize) whose token this
+is — the same call standalone mode has always made for asset resolution, now also made for
+identity. \$UC_TOKEN (\$UC_ADMIN's own token, from demo.env) is what demo-unity.sh presents as
+PROVIDER_TOKEN; this requires a Unity Catalog build carrying that endpoint (not yet in a release
+as of this writing — see the OpenSharing-Unity Catalog embedding PR).
 
 Its own store is a file under $SERVER_DIR/data, and it keeps what a run of the walkthrough
 put there. Delete it before recording, so the take starts from nothing:  rm -rf data

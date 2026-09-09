@@ -36,13 +36,13 @@ public record RecipientResponse(
         recipient.getId(),
         recipient.getName(),
         recipient.getAuthType(),
-        recipient.getOwner().getId(),
+        recipient.getOwnerId(),
         List.copyOf(recipient.getIpAccessList()),
         Map.copyOf(recipient.getProperties()),
         recipient.getCreatedAt(),
-        recipient.getCreatedBy().getId(),
+        recipient.getCreatedBy(),
         recipient.getUpdatedAt(),
-        recipient.getUpdatedBy().getId(),
+        recipient.getUpdatedBy(),
         tokens);
   }
 }

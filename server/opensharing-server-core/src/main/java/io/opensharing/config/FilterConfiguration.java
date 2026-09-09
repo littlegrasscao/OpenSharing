@@ -2,11 +2,9 @@ package io.opensharing.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opensharing.auth.AdminAuthenticationFilter;
-import io.opensharing.principal.PrincipalStore;
 import io.opensharing.recipient.RecipientAuthenticationFilter;
 import io.opensharing.recipient.RecipientTokenService;
 import io.opensharing.runtime.ProviderIdentityResolver;
-import org.springframework.beans.factory.ObjectProvider;
 import java.util.List;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -44,14 +42,11 @@ public class FilterConfiguration {
 
   @Bean
   public FilterRegistrationBean<AdminAuthenticationFilter> adminAuthentication(
-      PrincipalStore principals,
+      ProviderIdentityResolver identityResolver,
       ObjectMapper objectMapper,
-      ObjectProvider<ProviderIdentityResolver> identityResolver,
       OpenSharingProperties properties) {
     FilterRegistrationBean<AdminAuthenticationFilter> registration =
-        new FilterRegistrationBean<>(
-            new AdminAuthenticationFilter(
-                principals, objectMapper, identityResolver.getIfAvailable()));
+        new FilterRegistrationBean<>(new AdminAuthenticationFilter(identityResolver, objectMapper));
     registration.addUrlPatterns(properties.getProvider().getBasePath() + "/*");
     registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
     return registration;

@@ -1,6 +1,5 @@
 package io.opensharing.share;
 
-import io.opensharing.principal.PrincipalEntity;
 import io.opensharing.recipient.RecipientEntity;
 import java.util.List;
 import java.util.Optional;
@@ -21,8 +20,6 @@ public interface SharePermissionRepository extends JpaRepository<SharePermission
   List<SharePermissionEntity> findByShareOrderByRecipientNameLowerAsc(ShareEntity share);
 
   List<SharePermissionEntity> findByRecipientOrderByShareNameLowerAsc(RecipientEntity recipient);
-
-  long countByGrantedBy(PrincipalEntity grantedBy);
 
   void deleteByShare(ShareEntity share);
 

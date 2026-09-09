@@ -11,7 +11,6 @@ import org.springframework.boot.test.context.SpringBootTest;
     properties = {
       "spring.datasource.url=jdbc:h2:mem:opensharing-hosting;DB_CLOSE_DELAY=-1",
       "opensharing.hosting.mode=standalone",
-      "opensharing.security.credential-encryption-key=c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=",
       "opensharing.catalog.type=local",
       "opensharing.catalog.local.file=classpath:test-catalog.yml"
     })

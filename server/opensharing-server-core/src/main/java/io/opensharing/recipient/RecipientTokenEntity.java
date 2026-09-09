@@ -1,7 +1,6 @@
 package io.opensharing.recipient;
 
 import io.opensharing.BaseEntity;
-import io.opensharing.principal.PrincipalEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -58,9 +57,9 @@ public class RecipientTokenEntity extends BaseEntity {
   @Column(name = "revoked_at")
   private Instant revokedAt;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "created_by", nullable = false)
-  private PrincipalEntity createdBy;
+  /** A catalog's own identity for whoever issued this token — see {@code ShareEntity}. */
+  @Column(name = "created_by", nullable = false, length = 255)
+  private String createdBy;
 
   public boolean isUsable(Instant now) {
     return activated && revokedAt == null && (expiresAt == null || expiresAt.isAfter(now));
@@ -130,11 +129,11 @@ public class RecipientTokenEntity extends BaseEntity {
     this.revokedAt = revokedAt;
   }
 
-  public PrincipalEntity getCreatedBy() {
+  public String getCreatedBy() {
     return createdBy;
   }
 
-  public void setCreatedBy(PrincipalEntity createdBy) {
+  public void setCreatedBy(String createdBy) {
     this.createdBy = createdBy;
   }
 }

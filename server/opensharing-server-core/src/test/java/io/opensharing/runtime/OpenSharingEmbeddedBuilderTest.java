@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.opensharing.catalog.StubCatalogConnector;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -11,7 +12,16 @@ class OpenSharingEmbeddedBuilderTest {
 
   @Test
   void refusesToStartWithoutACatalogConnector() {
-    assertThrows(IllegalStateException.class, () -> OpenSharing.embedded().run());
+    assertThrows(
+        IllegalStateException.class,
+        () -> OpenSharing.embedded().identityResolver(request -> Optional.empty()).run());
+  }
+
+  @Test
+  void refusesToStartWithoutAnIdentityResolver() {
+    assertThrows(
+        IllegalStateException.class,
+        () -> OpenSharing.embedded().catalog(StubCatalogConnector.INSTANCE).run());
   }
 
   @Test
@@ -19,14 +29,12 @@ class OpenSharingEmbeddedBuilderTest {
     ConfigurableApplicationContext context =
         OpenSharing.embedded()
             .catalog(StubCatalogConnector.INSTANCE)
+            .identityResolver(request -> Optional.empty())
             .property(
                 "spring.datasource.url", "jdbc:h2:mem:opensharing-embedded-builder;DB_CLOSE_DELAY=-1")
             .property("spring.jpa.hibernate.ddl-auto", "create-drop")
             .property("server.port", "0")
             .property("spring.main.web-application-type", "none")
-            .property(
-                "opensharing.security.credential-encryption-key",
-                "c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=")
             .run();
     try {
       SharingRuntime runtime = context.getBean(SharingRuntime.class);

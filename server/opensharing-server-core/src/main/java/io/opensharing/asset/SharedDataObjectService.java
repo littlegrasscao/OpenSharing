@@ -4,7 +4,7 @@ import io.opensharing.catalog.AssetType;
 import io.opensharing.catalog.CatalogCaller;
 import io.opensharing.catalog.ResolvedAsset;
 import io.opensharing.http.ApiException;
-import io.opensharing.principal.PrincipalEntity;
+import io.opensharing.principal.Caller;
 import io.opensharing.share.ShareEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +31,7 @@ public class SharedDataObjectService {
    */
   public SharedDataObjectEntity add(
       ShareEntity share,
-      PrincipalEntity author,
+      Caller author,
       CatalogCaller caller,
       String catalogName,
       AssetType type,
@@ -51,8 +51,8 @@ public class SharedDataObjectService {
       object.setSharedAs(
           sharedAs == null || sharedAs.isBlank() ? SharedAliases.defaultFor(catalogName) : sharedAs);
     }
-    object.setAddedBy(author);
-    object.setUpdatedBy(author);
+    object.setAddedBy(author.principalId());
+    object.setUpdatedBy(author.principalId());
 
     if (objects.existsSource(share, catalogName)) {
       throw ApiException.alreadyExists(

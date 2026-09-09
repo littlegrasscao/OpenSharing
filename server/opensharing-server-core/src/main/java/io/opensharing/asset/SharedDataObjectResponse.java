@@ -44,8 +44,8 @@ public record SharedDataObjectResponse(
         object.getStorageLocation(),
         object.getAccessModes().stream().map(AccessMode::wireName).sorted().toList(),
         object.getCreatedAt(),
-        object.getAddedBy().getId(),
+        object.getAddedBy(),
         object.getUpdatedAt(),
-        object.getUpdatedBy().getId());
+        object.getUpdatedBy());
   }
 }

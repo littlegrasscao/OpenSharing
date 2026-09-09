@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,6 +117,40 @@ final class UnityCatalogClient {
             .build();
     return send(request, type, "POST " + path);
   }
+
+  /**
+   * Whose token this is, and — when {@code privilege} is given — whether they may do what they are
+   * asking. Unlike every other call this client makes, the token here is not a {@link
+   * CatalogCaller}'s: it is a live provider-admin request's own token, being authenticated for the
+   * first time, not yet known to belong to anyone.
+   *
+   * @return empty when the catalog answers 401: the token itself is not one it recognizes, which
+   *     for a provider-admin caller means exactly what it means for the catalog itself — reject the
+   *     request, not something for this client to have an opinion about
+   */
+  Optional<AuthorizeResult> authorize(String bearerToken, String privilege) {
+    HttpRequest request =
+        HttpRequest.newBuilder(
+                uriOf(
+                    "/opensharing/authorize",
+                    privilege == null ? Map.of() : query("privilege", privilege)))
+            .timeout(requestTimeout)
+            .header("Accept", "application/json")
+            .header("Authorization", "Bearer " + bearerToken)
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build();
+    try {
+      return Optional.of(send(request, AuthorizeResult.class, "POST /opensharing/authorize"));
+    } catch (UnityApiException e) {
+      if (e.status() == 401) {
+        return Optional.empty();
+      }
+      throw e;
+    }
+  }
+
+  /** {@code {"user_id", "user_name", "authorized"}} from {@code POST /opensharing/authorize}. */
+  record AuthorizeResult(String userId, String userName, boolean authorized) {}
 
   private HttpRequest.Builder request(String path, Map<String, String> query, CatalogCaller caller) {
     HttpRequest.Builder request =

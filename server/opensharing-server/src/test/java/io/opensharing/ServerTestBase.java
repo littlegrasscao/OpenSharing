@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,7 +29,6 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "opensharing.catalog.type=local",
       "opensharing.catalog.local.file=classpath:test-catalog.yml",
       "opensharing.activation.external-base-url=https://sharing.example.com",
-      "opensharing.security.credential-encryption-key=" + ServerTestBase.CREDENTIAL_KEY,
       "opensharing.admin.principals[0].name=" + ServerTestBase.ALICE,
       "opensharing.admin.principals[0].bearer-token=" + ServerTestBase.ALICE_TOKEN,
       "opensharing.admin.principals[1].name=" + ServerTestBase.MALLORY,
@@ -39,8 +37,6 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 abstract class ServerTestBase {
 
-  /** Base64 of 32 bytes, so a catalog credential can be stored in tests that want one. */
-  static final String CREDENTIAL_KEY = "c2hhcmluZy10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=";
   static final String PROTOCOL_BASE = "/api/2.1/opensharing";
   static final String ADMIN_BASE = "/api/2.1/opensharing/provider";
   static final String ACTIVATION_BASE = "/api/2.1/opensharing/activation";
@@ -64,11 +60,12 @@ abstract class ServerTestBase {
     return prefix + "_" + Long.toHexString(System.nanoTime());
   }
 
+  /**
+   * A local-mode principal's id is its configured name: there is no principal table, and no
+   * catalog-assigned id to look one up in — see {@code ConfiguredPrincipalsIdentityResolver}.
+   */
   protected String principalId(String name) {
-    return jdbc.queryForObject(
-        "select id from os_principals where name_lower = ?",
-        String.class,
-        name.toLowerCase(Locale.ROOT));
+    return name;
   }
 
   protected JsonNode adminPost(String path, String body) throws Exception {

@@ -45,7 +45,8 @@ public final class OpenSharing {
 
     /**
      * Maps the host's authenticated principal to a {@link io.opensharing.principal.Caller} for
-     * provider-admin APIs. When omitted, admin authentication falls back to configured principals.
+     * provider-admin APIs (required): embedded mode keeps no principal store or configured list of
+     * its own to fall back to, so there is no admin identity without one.
      */
     public EmbeddedBuilder identityResolver(ProviderIdentityResolver identityResolver) {
       this.identityResolver = identityResolver;
@@ -60,6 +61,10 @@ public final class OpenSharing {
     public ConfigurableApplicationContext run(String... args) {
       if (catalog == null) {
         throw new IllegalStateException("embedded OpenSharing requires a CatalogConnector from the host");
+      }
+      if (identityResolver == null) {
+        throw new IllegalStateException(
+            "embedded OpenSharing requires a ProviderIdentityResolver from the host");
       }
       Map<String, Object> merged = new LinkedHashMap<>(properties);
       merged.put("opensharing.hosting.mode", "embedded");
@@ -92,10 +97,8 @@ public final class OpenSharing {
           (DefaultListableBeanFactory) context.getBeanFactory();
       beanFactory.registerSingleton("catalogConnector", catalog);
       beanFactory.registerResolvableDependency(CatalogConnector.class, catalog);
-      if (identityResolver != null) {
-        beanFactory.registerSingleton("providerIdentityResolver", identityResolver);
-        beanFactory.registerResolvableDependency(ProviderIdentityResolver.class, identityResolver);
-      }
+      beanFactory.registerSingleton("providerIdentityResolver", identityResolver);
+      beanFactory.registerResolvableDependency(ProviderIdentityResolver.class, identityResolver);
     }
   }
 }

@@ -5,12 +5,11 @@
 #                     --opensharing.admin.principals[0].name=alice@example.com \
 #                     --opensharing.admin.principals[0].bearer-token=dapi-alice-secret \
 #                     --opensharing.admin.principals[1].name=bob@example.com \
-#                     --opensharing.admin.principals[1].bearer-token=bob-secret \
-#                     --opensharing.security.credential-encryption-key=b3BlbnNoYXJpbmctZGVtby1rZXktMzItYnl0ZXMhISE="
+#                     --opensharing.admin.principals[1].bearer-token=bob-secret"
 #   2. terminal B:  ./scripts/demo.sh
 #
-# The encryption key is what a principal's token is sealed under so the catalog can be asked as them
-# later. The provider principal must be listed in principals before the server starts.
+# The provider principal must be listed in principals before the server starts: the local file
+# catalog has nothing to delegate identity to, so this fixed list is the whole of it.
 #
 # Environment:
 #   SERVER            base URL of the server                (default http://localhost:8080)

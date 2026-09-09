@@ -1,7 +1,6 @@
 package io.opensharing.share;
 
 import io.opensharing.BaseEntity;
-import io.opensharing.principal.PrincipalEntity;
 import io.opensharing.recipient.RecipientEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -38,9 +37,9 @@ public class SharePermissionEntity extends BaseEntity {
   @Column(name = "privilege", nullable = false, length = 32)
   private SharePrivilege privilege;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "granted_by", nullable = false)
-  private PrincipalEntity grantedBy;
+  /** A catalog's own identity for whoever granted this privilege — see {@code ShareEntity}. */
+  @Column(name = "granted_by", nullable = false, length = 255)
+  private String grantedBy;
 
   public ShareEntity getShare() {
     return share;
@@ -66,11 +65,11 @@ public class SharePermissionEntity extends BaseEntity {
     this.privilege = privilege;
   }
 
-  public PrincipalEntity getGrantedBy() {
+  public String getGrantedBy() {
     return grantedBy;
   }
 
-  public void setGrantedBy(PrincipalEntity grantedBy) {
+  public void setGrantedBy(String grantedBy) {
     this.grantedBy = grantedBy;
   }
 }

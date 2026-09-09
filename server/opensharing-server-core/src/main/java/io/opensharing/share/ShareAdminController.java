@@ -5,8 +5,6 @@ import io.opensharing.http.ApiException;
 import io.opensharing.http.ListResponse;
 import io.opensharing.http.Listings;
 import io.opensharing.principal.Caller;
-import io.opensharing.principal.PrincipalEntity;
-import io.opensharing.principal.PrincipalStore;
 import io.opensharing.recipient.RecipientStore;
 import io.opensharing.asset.SharedDataObjectEntity;
 import io.opensharing.asset.SharedDataObjectResponse;
@@ -35,7 +33,6 @@ public class ShareAdminController {
 
   private final ShareStore shares;
   private final RecipientStore recipients;
-  private final PrincipalStore principals;
   private final SharedDataObjectStore objects;
   private final SharedDataObjectService objectService;
   private final Listings listings;
@@ -43,13 +40,11 @@ public class ShareAdminController {
   public ShareAdminController(
       ShareStore shares,
       RecipientStore recipients,
-      PrincipalStore principals,
       SharedDataObjectStore objects,
       SharedDataObjectService objectService,
       Listings listings) {
     this.shares = shares;
     this.recipients = recipients;
-    this.principals = principals;
     this.objects = objects;
     this.objectService = objectService;
     this.listings = listings;
@@ -60,7 +55,7 @@ public class ShareAdminController {
   public ShareResponse create(Caller caller, @Valid @RequestBody CreateShareRequest request) {
     return ShareResponse.from(
         shares.create(
-            principals.require(caller),
+            caller,
             request.name(),
             request.displayName(),
             request.comment(),
@@ -88,19 +83,18 @@ public class ShareAdminController {
   @PatchMapping("/{share}")
   public ShareResponse update(
       Caller caller, @PathVariable String share, @Valid @RequestBody UpdateShareRequest request) {
-    PrincipalEntity author = principals.require(caller);
-    ShareEntity entity = shares.requireOwned(share, author);
+    ShareEntity entity = shares.requireOwned(share, caller);
     for (UpdateShareRequest.Update update : request.updates()) {
-      apply(caller, author, entity, update);
+      apply(caller, entity, update);
     }
     return withObjects(
         shares.update(
-            author, entity, request.displayName(), request.comment(), request.properties()));
+            caller, entity, request.displayName(), request.comment(), request.properties()));
   }
 
   @DeleteMapping("/{share}")
   public ResponseEntity<Void> delete(Caller caller, @PathVariable String share) {
-    shares.delete(share, principals.require(caller));
+    shares.delete(share, caller);
     return ResponseEntity.noContent().build();
   }
 
@@ -119,24 +113,22 @@ public class ShareAdminController {
       Caller caller,
       @PathVariable String share,
       @Valid @RequestBody UpdateSharePermissionsRequest request) {
-    PrincipalEntity author = principals.require(caller);
-    ShareEntity entity = shares.requireOwned(share, author);
+    ShareEntity entity = shares.requireOwned(share, caller);
     for (UpdateSharePermissionsRequest.Change change : request.changes()) {
       var recipient = recipients.require(change.recipientName());
       change.remove().forEach(privilege -> shares.revoke(entity, recipient, privilege));
-      change.add().forEach(privilege -> shares.grant(author, entity, recipient, privilege));
+      change.add().forEach(privilege -> shares.grant(caller, entity, recipient, privilege));
     }
     return listPermissions(share);
   }
 
-  private void apply(
-      Caller caller, PrincipalEntity author, ShareEntity share, UpdateShareRequest.Update update) {
+  private void apply(Caller caller, ShareEntity share, UpdateShareRequest.Update update) {
     UpdateShareRequest.DataObject dataObject = update.dataObject();
     switch (update.action()) {
       case ADD ->
           objectService.add(
               share,
-              author,
+              caller,
               CatalogCaller.withBearerToken(caller.name(), caller.bearerToken()),
               dataObject.name(),
               dataObject.type(),

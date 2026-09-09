@@ -17,7 +17,6 @@ public class OpenSharingProperties {
 
   private final Admin admin = new Admin();
   private final Provider provider = new Provider();
-  private final Security security = new Security();
   private final Activation activation = new Activation();
   private final RecipientTokens recipientTokens = new RecipientTokens();
   private final AssetCredentials assetCredentials = new AssetCredentials();
@@ -55,10 +54,6 @@ public class OpenSharingProperties {
 
   public Provider getProvider() {
     return provider;
-  }
-
-  public Security getSecurity() {
-    return security;
   }
 
   public Activation getActivation() {
@@ -177,29 +172,6 @@ public class OpenSharingProperties {
 
     public void setBasePath(String basePath) {
       this.basePath = prefix(basePath);
-    }
-  }
-
-  /** Secrets this server holds rather than merely recognizes. */
-  public static class Security {
-
-    /**
-     * Base64 AES key (16, 24 or 32 bytes) that a principal's token is sealed with, so the server can
-     * present it to the catalog while serving a recipient. Required: with no key a principal cannot
-     * be registered, because there would be nothing to ask the catalog with once they had gone.
-     *
-     * <p>It belongs somewhere a database dump does not reach: an environment variable, a mounted
-     * secret, a KMS. Rotating it means re-encrypting, so replace each credential through the admin
-     * API after changing it.
-     */
-    private String credentialEncryptionKey;
-
-    public String getCredentialEncryptionKey() {
-      return credentialEncryptionKey;
-    }
-
-    public void setCredentialEncryptionKey(String credentialEncryptionKey) {
-      this.credentialEncryptionKey = credentialEncryptionKey;
     }
   }
 
@@ -426,6 +398,15 @@ public class OpenSharingProperties {
       /** How long to wait for a response, once connected. */
       private Duration requestTimeout = Duration.ofSeconds(30);
 
+      /**
+       * This server's own identity, presented instead of a bearer token when it has to ask the
+       * catalog on behalf of a share's owner (a recipient's read, made long after the owner's own
+       * request is over) rather than as a live caller. Must match the secret Unity Catalog itself
+       * is configured with ({@code server.opensharing.server-secret}). Only required if a recipient
+       * is ever actually served against this catalog; blank otherwise.
+       */
+      private String serverSecret;
+
       public String getUri() {
         return uri;
       }
@@ -448,6 +429,14 @@ public class OpenSharingProperties {
 
       public void setRequestTimeout(Duration requestTimeout) {
         this.requestTimeout = requestTimeout;
+      }
+
+      public String getServerSecret() {
+        return serverSecret;
+      }
+
+      public void setServerSecret(String serverSecret) {
+        this.serverSecret = serverSecret;
       }
     }
   }

@@ -16,11 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.opensharing.auth.SecretCipher;
-import io.opensharing.config.OpenSharingProperties;
 import java.time.Instant;
-import java.util.Locale;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -42,43 +38,18 @@ class ProviderAdminApiTest extends ServerTestBase {
   }
 
   /**
-   * The one secret a principal has, in the two forms the server keeps it in: a hash to recognize them
-   * by, and a sealed copy to ask the catalog with. Neither is readable in the database or the API.
+   * There is no principal table for a caller's token to end up in, at all — configured or resolved
+   * fresh from the catalog, a caller's identity lives only for the length of the request that
+   * presented it, so there is nothing here for a database dump to expose.
    */
   @Test
-  void keepsAProvisionedPrincipalsTokenHashedToRecognizeAndSealedToReplay() throws Exception {
-    String sealed = storedCatalogCredential(ALICE);
-    assertTrue(sealed.startsWith("v1."), "the stored form says what it is: " + sealed);
-    assertFalse(sealed.contains(ALICE_TOKEN), "the secret itself is not in the database");
-    assertFalse(storedTokenHash(ALICE).contains(ALICE_TOKEN), "nor in the column used to recognize it");
-
-    String id = principalId(ALICE);
-    assertEquals(
-        ALICE_TOKEN, cipher().decrypt(sealed, id), "and what comes back out is what was configured");
+  void requiresAKnownPrincipalsTokenAndKeepsNoRecordOfIt() throws Exception {
+    mvc.perform(get(ADMIN_BASE + "/shares").header("Authorization", "Bearer " + ALICE_TOKEN))
+        .andExpect(status().isOk());
     assertThrows(
-        Exception.class, () -> cipher().decrypt(sealed, UUID.randomUUID().toString()));
-  }
-
-  /** Reads the stored form the way the server does, with the key the tests run under. */
-  private SecretCipher cipher() {
-    OpenSharingProperties properties = new OpenSharingProperties();
-    properties.getSecurity().setCredentialEncryptionKey(CREDENTIAL_KEY);
-    return new SecretCipher(properties);
-  }
-
-  private String storedCatalogCredential(String principal) {
-    return storedColumn("catalog_credential", principal);
-  }
-
-  private String storedTokenHash(String principal) {
-    return storedColumn("token_hash", principal);
-  }
-
-  private String storedColumn(String column, String principal) {
-    return jdbc.queryForObject(
-        "select " + column + " from os_principals where name_lower = ?",
-        String.class,
-        principal.toLowerCase(Locale.ROOT));
+        Exception.class,
+        () -> jdbc.queryForObject("select 1 from os_principals", Integer.class),
+        "os_principals should not exist at all");
   }
 
   @Test
