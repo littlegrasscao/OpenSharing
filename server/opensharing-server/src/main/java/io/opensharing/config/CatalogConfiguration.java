@@ -9,7 +9,7 @@ import io.opensharing.catalog.local.LocalCatalogConnector;
 import io.opensharing.catalog.local.LocalCatalogFile;
 import io.opensharing.catalog.local.LocalCatalogLoader;
 import io.opensharing.catalog.unity.UnityCatalogConnector;
-import io.opensharing.catalog.unity.UnityCatalogProviderIdentityResolver;
+import io.opensharing.principal.CatalogAuthorizingIdentityResolver;
 import io.opensharing.principal.ConfiguredPrincipalsIdentityResolver;
 import java.io.IOException;
 import java.io.InputStream;
@@ -112,25 +112,27 @@ public class CatalogConfiguration {
   }
 
   /**
-   * Resolves a provider-admin request's caller: by asking the catalog whose token this is ({@code
-   * unity} — the same authorize call embedded mode makes, just against a remote address instead of
-   * a loopback one), or against a fixed, configured list ({@code local}, which has no catalog to
-   * ask instead). A deployment that talks to something else contributes its own {@code
-   * ProviderIdentityResolver} bean, which takes precedence over this one.
+   * Resolves a provider-admin request's caller: by asking the catalog connector's own {@link
+   * CatalogConnector#authorize} whose token this is ({@code unity} — the same call embedded mode
+   * makes, just against a remote address instead of a loopback one), or against a fixed, configured
+   * list ({@code local}, whose connector has no such notion). A deployment that talks to something
+   * else contributes its own {@code ProviderIdentityResolver} bean, which takes precedence over this
+   * one.
+   *
+   * <p>Depends on the {@link CatalogConnector} bean itself, rather than building a connection of its
+   * own from {@code opensharing.catalog.unity.uri}, so that {@code unity} shares one connector's
+   * connection to Unity Catalog instead of opening a second one to the same place.
    */
   @Bean
   @ConditionalOnMissingBean(ProviderIdentityResolver.class)
-  public ProviderIdentityResolver providerIdentityResolver(OpenSharingProperties properties) {
+  public ProviderIdentityResolver providerIdentityResolver(
+      CatalogConnector catalogConnector, OpenSharingProperties properties) {
     OpenSharingProperties.Catalog catalog = properties.getCatalog();
     String type = catalog.getType() == null ? "" : catalog.getType().trim().toLowerCase(Locale.ROOT);
     return switch (type) {
       case LocalCatalogConnector.NAME ->
           new ConfiguredPrincipalsIdentityResolver(properties.getAdmin().getPrincipals());
-      case UnityCatalogConnector.NAME -> {
-        OpenSharingProperties.Catalog.Unity config = catalog.getUnity();
-        yield new UnityCatalogProviderIdentityResolver(
-            URI.create(config.getUri().trim()), config.getConnectTimeout(), config.getRequestTimeout());
-      }
+      case UnityCatalogConnector.NAME -> new CatalogAuthorizingIdentityResolver(catalogConnector);
       default ->
           throw new IllegalStateException("unknown opensharing.catalog.type '" + catalog.getType() + "'");
     };

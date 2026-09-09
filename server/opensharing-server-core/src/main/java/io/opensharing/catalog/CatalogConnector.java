@@ -1,6 +1,7 @@
 package io.opensharing.catalog;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The seam between the sharing server and the system of record for assets. The server never talks
@@ -104,4 +105,35 @@ public interface CatalogConnector {
    * @throws CatalogException if the catalog refuses or cannot mint credentials
    */
   List<StorageCredentials> getStorageCredentials(CredentialRequest request, CatalogCaller caller);
+
+  /**
+   * Resolves a provider-admin bearer token to the principal behind it, and — when {@code privilege}
+   * is given — whether that principal may do it. This is how a provider-admin request is
+   * authenticated at all in a deployment with no {@code opensharing.admin.principals} of its own: the
+   * catalog is asked whose token this is instead, so this server never has to store, or even see,
+   * anything it could replay as them later.
+   *
+   * <p>Unlike {@link #resolveAsset} and {@link #getStorageCredentials}, which act as an already-known
+   * {@link CatalogCaller}, this is what produces one in the first place — from a bare token, with no
+   * asset or existing identity in view yet. That is also why it takes an unadorned bearer token
+   * rather than a {@link CatalogCaller}: there is nothing to wrap it in until this answers.
+   *
+   * <p>Optional, like {@link #listChildren}, and for a similar reason: a catalog with no notion of
+   * provider-admin principals distinct from asset access — the local file catalog, most of all — is
+   * still a perfectly good connector for serving assets, and a deployment that never delegates
+   * identity to it configures {@code opensharing.admin.principals} instead and never calls this.
+   *
+   * @param privilege the one platform-level permission being asked about, or {@code null} to resolve
+   *     identity only, with no permission check — this server enforces everything else itself, per
+   *     share or recipient owned rather than as a privilege a catalog has an opinion on
+   * @return empty when the catalog does not recognize the token at all, or recognizes it but says no
+   *     to {@code privilege}; either way, exactly what an unauthenticated request looks like to
+   *     whoever resolves this into a rejection
+   * @throws UnsupportedOperationException if this catalog has no notion of provider-admin identity
+   *     distinct from the assets it serves
+   */
+  default Optional<CatalogPrincipal> authorize(String bearerToken, String privilege) {
+    throw new UnsupportedOperationException(
+        "the " + name() + " catalog has no notion of provider-admin identity to authorize");
+  }
 }

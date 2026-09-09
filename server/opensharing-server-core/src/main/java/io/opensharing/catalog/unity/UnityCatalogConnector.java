@@ -9,6 +9,7 @@ import io.opensharing.catalog.AssetType;
 import io.opensharing.catalog.CatalogCaller;
 import io.opensharing.catalog.CatalogConnector;
 import io.opensharing.catalog.CatalogException;
+import io.opensharing.catalog.CatalogPrincipal;
 import io.opensharing.catalog.CloudProvider;
 import io.opensharing.catalog.CredentialRequest;
 import io.opensharing.catalog.ResolvedAsset;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.function.Supplier;
@@ -95,6 +97,20 @@ public final class UnityCatalogConnector implements CatalogConnector {
   UnityCatalogConnector(UnityCatalogClient client) {
     this.client = client;
     log.info("Unity Catalog connector will resolve assets at {}", client.baseUri());
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Delegates to {@code POST /opensharing/authorize} — the one call this connector makes with no
+   * {@link CatalogCaller} of its own to authenticate as, because producing one is the point.
+   */
+  @Override
+  public Optional<CatalogPrincipal> authorize(String bearerToken, String privilege) {
+    return client
+        .authorize(bearerToken, privilege)
+        .filter(UnityCatalogClient.AuthorizeResult::authorized)
+        .map(result -> new CatalogPrincipal(result.userId(), result.userName()));
   }
 
   @Override

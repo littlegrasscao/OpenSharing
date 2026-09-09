@@ -27,6 +27,14 @@ mvn install
 mvn -s .mvn/local-mirror-settings.xml install
 ```
 
+This builds at release 21 (this pom's `maven.compiler.release`) — the language level OpenSharing's
+own code uses, most visibly pattern-matching over `CatalogCaller.Credential` in a switch. Unity
+Catalog's `server-sharing` module, which depends on the jar this installs, compiles at `--release
+21` for exactly that reason (see `unitycatalog/build.sbt`'s `serverSharing` project) rather than the
+`--release 17` most of that build otherwise uses — `javac --release N` refuses a classpath jar built
+for anything newer than `N` outright (`class file has wrong version`), not merely one whose syntax
+it declines to use, so `server-sharing` needs at least as new a release as this jar's.
+
 This installs into `~/.m2/repository`:
 
 ```
@@ -34,21 +42,22 @@ io/opensharing/opensharing-server-core/0.1.0-SNAPSHOT/opensharing-server-core-0.
 io/opensharing/opensharing-server/0.1.0-SNAPSHOT/opensharing-server-0.1.0-SNAPSHOT-exec.jar
 ```
 
-UC depends on **core only** (plain jar, not `-exec`):
+UC depends on **core only** (plain jar, not `-exec`), from its own `server-sharing` project, which
+in turn `server-embedded` depends on for a runtime classpath (see `unitycatalog/build.sbt`):
 
 ```scala
-// unitycatalog/build.sbt — server project libraryDependencies
+// unitycatalog/build.sbt — serverSharing project libraryDependencies
 "io.opensharing" % "opensharing-server-core" % "0.1.0-SNAPSHOT"
 ```
 
 Unity Catalog already adds `Resolver.mavenLocal`, so `mvn install` in OpenSharing is enough before
-`publishLocal` / `sbt server/compile` in UC.
+`publishLocal` / `sbt serverSharing/compile` in UC.
 
 After changing OpenSharing, reinstall and rebuild UC:
 
 ```bash
 cd ~/OpenSharing/server && mvn install -DskipTests
-cd ~/unitycatalog && sbt "server/compile"
+cd ~/unitycatalog && sbt "serverSharing/compile" "serverEmbedded/compile"
 ```
 
 ## Modes
@@ -91,16 +100,21 @@ The host supplies two integration points, both required:
 
 1. **`CatalogConnector`** — for UC, this is the *same* `UnityCatalogConnector` standalone mode
    uses, pointed at UC's own Armeria server on `127.0.0.1:<armeriaPort>` instead of a remote URL.
-2. **`ProviderIdentityResolver`** — for UC, the *same* `UnityCatalogProviderIdentityResolver`
-   standalone mode's `catalog.type=unity` uses, pointed at the same loopback address. There is no
+2. **`ProviderIdentityResolver`** — the *same* `CatalogAuthorizingIdentityResolver` standalone
+   mode's `catalog.type=unity` uses, wrapped around that one `CatalogConnector` rather than opening
+   a second connection to the same address: it asks the connector's own
+   `CatalogConnector#authorize` whose bearer token a provider-admin request carries, by delegating
+   to `UnityCatalogConnector`'s implementation of it (`POST /opensharing/authorize`). There is no
    fallback to configured principals in embedded mode: nothing here is stored anywhere, so there is
    nothing to fall back to.
 
 ```java
 URI ucLoopback = URI.create("http://127.0.0.1:" + armeriaPort + "/api/2.1/unity-catalog");
+UnityCatalogConnector connector =
+    new UnityCatalogConnector(ucLoopback, connectTimeout, requestTimeout, serverSecret);
 OpenSharing.embedded()
-    .catalog(new UnityCatalogConnector(ucLoopback, connectTimeout, requestTimeout, serverSecret))
-    .identityResolver(new UnityCatalogProviderIdentityResolver(ucLoopback, connectTimeout, requestTimeout))
+    .catalog(connector)
+    .identityResolver(new CatalogAuthorizingIdentityResolver(connector))
     .property("opensharing.protocol-prefix", "/api/2.1/opensharing")
     .run();
 ```
@@ -230,9 +244,11 @@ public interface ProviderIdentityResolver {
 ```
 
 Required in embedded mode — `AdminAuthenticationFilter` has no fallback to fall back to. For UC,
-also no new implementation needed: `OpenSharingLifecycle` constructs the existing
-`io.opensharing.catalog.unity.UnityCatalogProviderIdentityResolver`, pointed at the same loopback
-address as the connector above.
+also no new implementation needed: `OpenSharingLifecycle` wraps the existing
+`io.opensharing.principal.CatalogAuthorizingIdentityResolver` around the same `UnityCatalogConnector`
+instance as the connector above, so both go through one connection to UC rather than opening two —
+the resolver itself calls nothing but `CatalogConnector#authorize`, which `UnityCatalogConnector`
+implements as `POST /opensharing/authorize`.
 
 ## Spring wiring
 
@@ -271,7 +287,7 @@ For the two-process demo (released UC jar + standalone OpenSharing), use `demo-u
 
 ## Roadmap
 
-`OpenSharingLifecycle`, `UnityCatalogProviderIdentityResolver`, and the rest of UC's startup wiring
-live in the UC repository (`server-sharing` module). This repo ships the library artifact
+`OpenSharingLifecycle` and the rest of UC's startup wiring live in the UC repository
+(`server-sharing` module). This repo ships the library artifact
 (`opensharing-server-core`, which includes the `unity` HTTP connector reused by both standalone and
 embedded mode) and the standalone distribution (`opensharing-server`).
