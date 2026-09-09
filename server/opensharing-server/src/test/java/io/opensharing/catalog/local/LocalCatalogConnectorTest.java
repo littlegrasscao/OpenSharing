@@ -51,7 +51,8 @@ class LocalCatalogConnectorTest {
             - alice@example.com
       """;
 
-  private static final CatalogCaller ALICE = CatalogCaller.of("alice@example.com", "secret");
+  private static final CatalogCaller ALICE =
+      CatalogCaller.withBearerToken("alice@example.com", "secret");
 
   private static LocalCatalogConnector connector(String yaml) {
     return new LocalCatalogConnector(
@@ -108,7 +109,7 @@ class LocalCatalogConnectorTest {
 
     LocalCatalogConnector connector = connector(CATALOG);
     AssetLookup lookup = AssetLookup.of(AssetType.TABLE, "main.finance.ledger");
-    CatalogCaller bob = CatalogCaller.of("bob@example.com", "bob-catalog-credential");
+    CatalogCaller bob = CatalogCaller.withBearerToken("bob@example.com", "bob-catalog-credential");
     assertThrows(AssetAccessDeniedException.class, () -> connector.resolveAsset(lookup, bob));
   }
 

@@ -137,7 +137,7 @@ public class ShareAdminController {
           objectService.add(
               share,
               author,
-              CatalogCaller.of(caller.name(), caller.bearerToken()),
+              CatalogCaller.withBearerToken(caller.name(), caller.bearerToken()),
               dataObject.name(),
               dataObject.type(),
               dataObject.sharedAs());

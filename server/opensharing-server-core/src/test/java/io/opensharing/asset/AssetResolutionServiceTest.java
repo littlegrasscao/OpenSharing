@@ -51,7 +51,7 @@ class AssetResolutionServiceTest {
   private static final String NAME = "main.sales.orders";
   private static final String OWNER = "alice@example.com";
   private static final CatalogCaller OWNER_CALLER =
-      CatalogCaller.of(OWNER, "alice-catalog-credential");
+      CatalogCaller.withBearerToken(OWNER, "alice-catalog-credential");
 
   @Test
   void recordsThatASourceHasGoneMissing() {
@@ -117,7 +117,9 @@ class AssetResolutionServiceTest {
     resolution.resolveForServing(object);
 
     assertEquals(OWNER, asked.get().name(), "the recipient is nobody the catalog knows");
-    assertEquals("alice-catalog-credential", asked.get().bearerToken());
+    assertEquals(
+        "alice-catalog-credential",
+        ((CatalogCaller.Credential.BearerToken) asked.get().credential()).token());
   }
 
   private static SharedDataObjectEntity sharedObject() {

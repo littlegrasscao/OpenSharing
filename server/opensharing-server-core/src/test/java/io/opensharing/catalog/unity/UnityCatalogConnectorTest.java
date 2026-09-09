@@ -49,7 +49,8 @@ import org.junit.jupiter.api.Test;
 class UnityCatalogConnectorTest {
 
   private static final String BASE_PATH = "/api/2.1/unity-catalog";
-  private static final CatalogCaller ALICE = CatalogCaller.of("alice@example.com", "alice-token");
+  private static final CatalogCaller ALICE =
+      CatalogCaller.withBearerToken("alice@example.com", "alice-token");
   private static final String ORDERS = "main.sales.orders";
 
   private static final String DELTA_TABLE =
@@ -109,6 +110,35 @@ class UnityCatalogConnectorTest {
     connector.resolveAsset(AssetLookup.of(AssetType.TABLE, ORDERS), ALICE);
 
     assertEquals("Bearer alice-token", catalog.lastRequest().authorization());
+  }
+
+  @Test
+  void onBehalfOfPresentsTheConnectorsOwnServerSecretAndTheOwnersUserId() {
+    UnityCatalogConnector onBehalfOfConnector =
+        new UnityCatalogConnector(
+            catalog.uri(), Duration.ofSeconds(2), Duration.ofSeconds(10), "shared-secret");
+    catalog.answers("GET /tables/" + ORDERS, 200, DELTA_TABLE);
+    CatalogCaller owner = CatalogCaller.onBehalfOf("alice@example.com", "owner-user-id");
+
+    onBehalfOfConnector.resolveAsset(AssetLookup.of(AssetType.TABLE, ORDERS), owner);
+
+    assertNull(
+        catalog.lastRequest().authorization(),
+        "on-behalf-of presents no bearer token at all, only the two headers below");
+    assertEquals("shared-secret", catalog.lastRequest().serverSecret());
+    assertEquals("owner-user-id", catalog.lastRequest().onBehalfOf());
+  }
+
+  @Test
+  void onBehalfOfWithNoServerSecretConfiguredFailsRatherThanAskingUnauthenticated() {
+    CatalogCaller owner = CatalogCaller.onBehalfOf("alice@example.com", "owner-user-id");
+
+    CatalogException e =
+        assertThrows(
+            CatalogException.class,
+            () -> connector.resolveAsset(AssetLookup.of(AssetType.TABLE, ORDERS), owner));
+
+    assertTrue(e.getMessage().contains("server identity"));
   }
 
   @Test
@@ -692,7 +722,9 @@ class UnityCatalogConnectorTest {
               path,
               exchange.getRequestURI().getQuery(),
               exchange.getRequestHeaders().getFirst("Authorization"),
-              body));
+              body,
+              exchange.getRequestHeaders().getFirst("X-OpenSharing-Server-Secret"),
+              exchange.getRequestHeaders().getFirst("X-OpenSharing-On-Behalf-Of")));
       Deque<String[]> queued = answers.get(exchange.getRequestMethod() + " " + path);
       String[] answer =
           queued == null || queued.isEmpty()
@@ -712,5 +744,11 @@ class UnityCatalogConnectorTest {
     }
   }
 
-  private record Recorded(String path, String query, String authorization, String body) {}
+  private record Recorded(
+      String path,
+      String query,
+      String authorization,
+      String body,
+      String serverSecret,
+      String onBehalfOf) {}
 }

@@ -81,6 +81,17 @@ public final class UnityCatalogConnector implements CatalogConnector {
     this(new UnityCatalogClient(uri, connectTimeout, requestTimeout));
   }
 
+  /**
+   * @param serverSecret this connector's own identity for on-behalf-of catalog access (a
+   *     recipient's read, made as the share owner with no token of theirs to present) — see {@link
+   *     CatalogCaller.Credential.OnBehalfOf}. Null if this connector never needs to make one, which
+   *     is only true of a deployment that never serves a recipient read against this catalog.
+   */
+  public UnityCatalogConnector(
+      URI uri, Duration connectTimeout, Duration requestTimeout, String serverSecret) {
+    this(new UnityCatalogClient(uri, connectTimeout, requestTimeout, serverSecret));
+  }
+
   UnityCatalogConnector(UnityCatalogClient client) {
     this.client = client;
     log.info("Unity Catalog connector will resolve assets at {}", client.baseUri());

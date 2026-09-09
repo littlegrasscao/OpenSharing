@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.opensharing.catalog.CatalogCaller;
+import io.opensharing.catalog.CatalogCaller.Credential;
 import io.opensharing.catalog.CatalogException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,16 +27,29 @@ import org.slf4j.LoggerFactory;
  * Speaks HTTP and JSON to a Unity Catalog, so that {@link UnityCatalogConnector} above it deals only
  * in what the answers mean.
  *
- * <p>Requests are authenticated as the {@link CatalogCaller} they are made for, by presenting the
- * credential the caller carries as a bearer token. That is the whole of the authentication story:
- * this client holds no identity of its own, which is what makes every question the catalog is asked
- * one it can answer against the privileges of the principal it concerns.
+ * <p>Requests are authenticated as the {@link CatalogCaller} they are made for, one of two ways
+ * depending on which {@link Credential} the caller carries:
+ *
+ * <ul>
+ *   <li>{@link Credential.BearerToken} presents the token as {@code Authorization: Bearer}. This
+ *       client holds no identity of its own in that case, which is what makes the question one the
+ *       catalog answers against the privileges of the principal it actually concerns.
+ *   <li>{@link Credential.OnBehalfOf} presents this connector's own configured identity ({@code
+ *       serverSecret}) instead, naming the catalog user id the request should be evaluated as — for
+ *       a recipient's read, made long after that user's own request (if there ever was one) is
+ *       over, with no token of theirs available to present.
+ * </ul>
  *
  * <p>Unity Catalog's JSON is snake_case, and the protocol this server speaks is not, so it is read
  * with a mapper of its own rather than the application's. Unknown fields are ignored: a catalog is
  * free to grow its responses, and a sharing server that fell over when it did would be a poor client.
  */
 final class UnityCatalogClient {
+
+  /** Header names Unity Catalog's on-behalf-of access reads; see {@code AuthDecorator} there. */
+  private static final String SERVER_SECRET_HEADER = "X-OpenSharing-Server-Secret";
+
+  private static final String ON_BEHALF_OF_HEADER = "X-OpenSharing-On-Behalf-Of";
 
   private static final Logger log = LoggerFactory.getLogger(UnityCatalogClient.class);
 
@@ -64,10 +78,21 @@ final class UnityCatalogClient {
   private final URI baseUri;
   private final Duration requestTimeout;
   private final HttpClient http;
+  private final String serverSecret;
 
   UnityCatalogClient(URI baseUri, Duration connectTimeout, Duration requestTimeout) {
+    this(baseUri, connectTimeout, requestTimeout, null);
+  }
+
+  /**
+   * @param serverSecret this connector's own identity for {@link Credential.OnBehalfOf} calls, or
+   *     null if it is never asked to make one — a caller reaching only for {@link
+   *     Credential.BearerToken} never needs one configured at all.
+   */
+  UnityCatalogClient(URI baseUri, Duration connectTimeout, Duration requestTimeout, String serverSecret) {
     this.baseUri = withoutTrailingSlash(baseUri);
     this.requestTimeout = requestTimeout;
+    this.serverSecret = serverSecret;
     this.http =
         HttpClient.newBuilder()
             .connectTimeout(connectTimeout)
@@ -93,10 +118,31 @@ final class UnityCatalogClient {
   }
 
   private HttpRequest.Builder request(String path, Map<String, String> query, CatalogCaller caller) {
-    return HttpRequest.newBuilder(uriOf(path, query))
-        .timeout(requestTimeout)
-        .header("Accept", "application/json")
-        .header("Authorization", "Bearer " + caller.bearerToken());
+    HttpRequest.Builder request =
+        HttpRequest.newBuilder(uriOf(path, query))
+            .timeout(requestTimeout)
+            .header("Accept", "application/json");
+    return switch (caller.credential()) {
+      case Credential.BearerToken(String token) -> request.header("Authorization", "Bearer " + token);
+      case Credential.OnBehalfOf(String catalogUserId) -> {
+        if (serverSecret == null || serverSecret.isBlank()) {
+          throw new CatalogException(
+              "asking the Unity Catalog on behalf of '"
+                  + caller.name()
+                  + "' needs this connector's own server identity configured"
+                  + " (opensharing.catalog.unity.server-secret), and none is set");
+        }
+        yield request
+            .header(SERVER_SECRET_HEADER, serverSecret)
+            .header(ON_BEHALF_OF_HEADER, catalogUserId);
+      }
+      case Credential.None ignored ->
+          throw new IllegalStateException(
+              "the Unity Catalog connector was asked to make a request for '"
+                  + caller.name()
+                  + "' with no credential at all, which is a caller built for a different catalog"
+                  + " connector reaching this one instead");
+    };
   }
 
   private <T> T send(HttpRequest request, Class<T> type, String what) {

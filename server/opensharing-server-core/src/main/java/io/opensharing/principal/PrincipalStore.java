@@ -150,7 +150,7 @@ public class PrincipalStore {
           "this table cannot be served at the moment, because the provider it is shared by has no "
               + "credential stored to read it with");
     }
-    return CatalogCaller.of(principal.getName(), cipher.decrypt(stored, principal.getId()));
+    return CatalogCaller.withBearerToken(principal.getName(), cipher.decrypt(stored, principal.getId()));
   }
 
   @Transactional(readOnly = true)
