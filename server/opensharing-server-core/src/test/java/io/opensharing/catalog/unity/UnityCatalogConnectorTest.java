@@ -14,6 +14,7 @@ import io.opensharing.catalog.AssetAccessDeniedException;
 import io.opensharing.catalog.AssetLookup;
 import io.opensharing.catalog.AssetNotFoundException;
 import io.opensharing.catalog.AssetType;
+import io.opensharing.catalog.CatalogAuthorizationException;
 import io.opensharing.catalog.CatalogCaller;
 import io.opensharing.catalog.CatalogException;
 import io.opensharing.catalog.CatalogPrincipal;
@@ -36,7 +37,6 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -152,17 +152,16 @@ class UnityCatalogConnectorTest {
         {"user_id": "alice-id", "user_name": "alice@example.com", "authorized": true}
         """);
 
-    Optional<CatalogPrincipal> resolved = connector.authorize("alice-token", "CREATE_SHARE");
+    CatalogPrincipal resolved = connector.authorize("alice-token", "CREATE_SHARE");
 
-    assertTrue(resolved.isPresent());
-    assertEquals("alice-id", resolved.get().id());
-    assertEquals("alice@example.com", resolved.get().name());
+    assertEquals("alice-id", resolved.id());
+    assertEquals("alice@example.com", resolved.name());
     assertEquals("Bearer alice-token", catalog.lastRequest().authorization());
     assertEquals("privilege=CREATE_SHARE", catalog.lastRequest().query());
   }
 
   @Test
-  void authorizeIsEmptyWhenTheCatalogSaysNoToThePrivilege() {
+  void authorizeRefusesWhenTheCatalogSaysNoToThePrivilege() {
     catalog.answers(
         "POST /opensharing/authorize",
         200,
@@ -170,11 +169,13 @@ class UnityCatalogConnectorTest {
         {"user_id": "mallory-id", "user_name": "mallory@example.com", "authorized": false}
         """);
 
-    assertTrue(connector.authorize("mallory-token", "CREATE_SHARE").isEmpty());
+    assertThrows(
+        CatalogAuthorizationException.class,
+        () -> connector.authorize("mallory-token", "CREATE_SHARE"));
   }
 
   @Test
-  void authorizeIsEmptyWhenTheCatalogDoesNotRecognizeTheToken() {
+  void authorizeRefusesWhenTheCatalogDoesNotRecognizeTheToken() {
     catalog.answers(
         "POST /opensharing/authorize",
         401,
@@ -182,7 +183,7 @@ class UnityCatalogConnectorTest {
         {"error_code": "UNAUTHENTICATED", "message": "Invalid access token"}
         """);
 
-    assertTrue(connector.authorize("nonsense", null).isEmpty());
+    assertThrows(CatalogAuthorizationException.class, () -> connector.authorize("nonsense", null));
   }
 
   /**
@@ -191,7 +192,7 @@ class UnityCatalogConnectorTest {
    * 401. Read the same as an unrecognized token, not as this connector failing.
    */
   @Test
-  void authorizeIsEmptyWhenTheCatalogsOwnAuthorizationLayerRejectsOutright() {
+  void authorizeRefusesWhenTheCatalogsOwnAuthorizationLayerRejectsOutright() {
     catalog.answers(
         "POST /opensharing/authorize",
         403,
@@ -199,7 +200,9 @@ class UnityCatalogConnectorTest {
         {"error_code": "PERMISSION_DENIED", "message": "User not allowed: mallory@example.com"}
         """);
 
-    assertTrue(connector.authorize("mallory-token", "CREATE_SHARE").isEmpty());
+    assertThrows(
+        CatalogAuthorizationException.class,
+        () -> connector.authorize("mallory-token", "CREATE_SHARE"));
   }
 
   @Test

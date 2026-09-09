@@ -6,6 +6,7 @@ import io.opensharing.catalog.AssetAccessDeniedException;
 import io.opensharing.catalog.AssetLookup;
 import io.opensharing.catalog.AssetNotFoundException;
 import io.opensharing.catalog.AssetType;
+import io.opensharing.catalog.CatalogAuthorizationException;
 import io.opensharing.catalog.CatalogCaller;
 import io.opensharing.catalog.CatalogConnector;
 import io.opensharing.catalog.CatalogException;
@@ -28,7 +29,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.function.Supplier;
@@ -106,11 +106,16 @@ public final class UnityCatalogConnector implements CatalogConnector {
    * {@link CatalogCaller} of its own to authenticate as, because producing one is the point.
    */
   @Override
-  public Optional<CatalogPrincipal> authorize(String bearerToken, String privilege) {
+  public CatalogPrincipal authorize(String bearerToken, String privilege) {
     return client
         .authorize(bearerToken, privilege)
         .filter(UnityCatalogClient.AuthorizeResult::authorized)
-        .map(result -> new CatalogPrincipal(result.userId(), result.userName()));
+        .map(result -> new CatalogPrincipal(result.userId(), result.userName()))
+        .orElseThrow(
+            () ->
+                new CatalogAuthorizationException(
+                    "the Unity Catalog does not recognize this bearer token"
+                        + (privilege == null ? "" : ", or it may not " + privilege)));
   }
 
   @Override

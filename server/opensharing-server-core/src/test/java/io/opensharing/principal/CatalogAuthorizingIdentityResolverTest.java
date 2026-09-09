@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.opensharing.catalog.AssetLookup;
+import io.opensharing.catalog.CatalogAuthorizationException;
 import io.opensharing.catalog.CatalogCaller;
 import io.opensharing.catalog.CatalogConnector;
 import io.opensharing.catalog.CatalogPrincipal;
@@ -28,7 +29,7 @@ class CatalogAuthorizingIdentityResolverTest {
   @Test
   void resolvesAKnownBearerTokenToItsCaller() {
     FakeConnector connector =
-        new FakeConnector((token, privilege) -> Optional.of(new CatalogPrincipal("alice-id", "alice@example.com")));
+        new FakeConnector((token, privilege) -> new CatalogPrincipal("alice-id", "alice@example.com"));
     CatalogAuthorizingIdentityResolver resolver = new CatalogAuthorizingIdentityResolver(connector);
 
     Optional<Caller> resolved = resolver.resolve(request("GET", "/api/2.1/opensharing/provider/shares", "Bearer alice-token"));
@@ -41,8 +42,7 @@ class CatalogAuthorizingIdentityResolverTest {
 
   @Test
   void refusesARequestWithNoBearerTokenWithoutAskingTheConnector() {
-    FakeConnector connector =
-        new FakeConnector((token, privilege) -> Optional.of(new CatalogPrincipal("id", "name")));
+    FakeConnector connector = new FakeConnector((token, privilege) -> new CatalogPrincipal("id", "name"));
     CatalogAuthorizingIdentityResolver resolver = new CatalogAuthorizingIdentityResolver(connector);
 
     assertTrue(
@@ -52,7 +52,11 @@ class CatalogAuthorizingIdentityResolverTest {
 
   @Test
   void refusesWhateverTheConnectorRefuses() {
-    FakeConnector connector = new FakeConnector((token, privilege) -> Optional.empty());
+    FakeConnector connector =
+        new FakeConnector(
+            (token, privilege) -> {
+              throw new CatalogAuthorizationException("no");
+            });
     CatalogAuthorizingIdentityResolver resolver = new CatalogAuthorizingIdentityResolver(connector);
 
     assertTrue(
@@ -63,8 +67,7 @@ class CatalogAuthorizingIdentityResolverTest {
 
   @Test
   void asksForCreateShareOnlyWhenCreatingAShare() {
-    FakeConnector connector =
-        new FakeConnector((token, privilege) -> Optional.of(new CatalogPrincipal("id", "name")));
+    FakeConnector connector = new FakeConnector((token, privilege) -> new CatalogPrincipal("id", "name"));
     CatalogAuthorizingIdentityResolver resolver = new CatalogAuthorizingIdentityResolver(connector);
 
     resolver.resolve(request("POST", "/api/2.1/opensharing/provider/shares", "Bearer a-token"));
@@ -93,7 +96,7 @@ class CatalogAuthorizingIdentityResolverTest {
 
   @FunctionalInterface
   private interface Authorize {
-    Optional<CatalogPrincipal> apply(String bearerToken, String privilege);
+    CatalogPrincipal apply(String bearerToken, String privilege);
   }
 
   private static final class FakeConnector implements CatalogConnector {
@@ -122,7 +125,7 @@ class CatalogAuthorizingIdentityResolverTest {
     }
 
     @Override
-    public Optional<CatalogPrincipal> authorize(String bearerToken, String privilege) {
+    public CatalogPrincipal authorize(String bearerToken, String privilege) {
       this.lastToken = bearerToken;
       this.lastPrivilege = privilege;
       return authorize.apply(bearerToken, privilege);

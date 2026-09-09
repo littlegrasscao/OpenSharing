@@ -1,7 +1,7 @@
 package io.opensharing.principal;
 
+import io.opensharing.catalog.CatalogAuthorizationException;
 import io.opensharing.catalog.CatalogConnector;
-import io.opensharing.catalog.CatalogPrincipal;
 import io.opensharing.runtime.ProviderIdentityResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Optional;
@@ -38,9 +38,12 @@ public final class CatalogAuthorizingIdentityResolver implements ProviderIdentit
     if (token == null) {
       return Optional.empty();
     }
-    return connector
-        .authorize(token, privilegeFor(request))
-        .map(principal -> new Caller(principal.id(), principal.name(), token));
+    try {
+      var principal = connector.authorize(token, privilegeFor(request));
+      return Optional.of(new Caller(principal.id(), principal.name(), token));
+    } catch (CatalogAuthorizationException notAuthorized) {
+      return Optional.empty();
+    }
   }
 
   /**

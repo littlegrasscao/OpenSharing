@@ -1,7 +1,6 @@
 package io.opensharing.catalog;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * The seam between the sharing server and the system of record for assets. The server never talks
@@ -126,13 +125,13 @@ public interface CatalogConnector {
    * @param privilege the one platform-level permission being asked about, or {@code null} to resolve
    *     identity only, with no permission check — this server enforces everything else itself, per
    *     share or recipient owned rather than as a privilege a catalog has an opinion on
-   * @return empty when the catalog does not recognize the token at all, or recognizes it but says no
-   *     to {@code privilege}; either way, exactly what an unauthenticated request looks like to
-   *     whoever resolves this into a rejection
+   * @throws CatalogAuthorizationException if the catalog does not recognize the token at all, or
+   *     recognizes it but says no to {@code privilege} — either way, exactly what an unauthenticated
+   *     request looks like to whoever resolves this into a rejection
    * @throws UnsupportedOperationException if this catalog has no notion of provider-admin identity
    *     distinct from the assets it serves
    */
-  default Optional<CatalogPrincipal> authorize(String bearerToken, String privilege) {
+  default CatalogPrincipal authorize(String bearerToken, String privilege) {
     throw new UnsupportedOperationException(
         "the " + name() + " catalog has no notion of provider-admin identity to authorize");
   }
