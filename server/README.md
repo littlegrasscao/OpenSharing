@@ -177,7 +177,7 @@ inside it. Those two cascades are the only cross-package writes.
   `config.share`, and stored only as a SHA-256 hash — the server only ever needs to recognize it again,
   never present it anywhere. A provider's token is not stored at all, hashed or otherwise: for the
   `unity` catalog connector, every provider-admin request resolves identity fresh by asking the catalog
-  itself (`POST .../opensharing/authorize`), and a recipient's read reaches the catalog through
+  itself (`GET .../opensharing/authorize`), and a recipient's read reaches the catalog through
   on-behalf-of access — this server's own configured identity plus the share owner's catalog user id,
   never a token nobody has. There is no principal table, so there is nothing for a database dump to
   expose in the first place.

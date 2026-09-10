@@ -188,7 +188,7 @@ uc GET /tables/main.sales.orders \
   | jq -c '{full_name:"main.sales.orders",table_type,data_source_format,storage_location}'
 
 step "Minting the provider's token"
-# OpenSharing calls UC's own POST .../opensharing/authorize with whatever token a provider-admin
+# OpenSharing calls UC's own GET .../opensharing/authorize with whatever token a provider-admin
 # request presents, on every request — never storing or configuring an identity of its own (see
 # io.opensharing.catalog.unity.UnityCatalogProviderIdentityResolver). Authorization is disabled in
 # this demo, so that call doesn't verify the signature either, only reads this token's own JWT

@@ -84,7 +84,7 @@ java -jar opensharing-server-0.1.0-SNAPSHOT-exec.jar \
 No `opensharing.admin.principals` to configure for `catalog.type=unity`: a provider-admin request
 just presents whatever bearer token their catalog already issued them (a real UC token, or, in a
 demo with `server.authorization=disable`, any JWT-shaped one), and OpenSharing asks the catalog's
-own `POST /opensharing/authorize` whose it is, fresh, on every request. `opensharing.admin.principals`
+own `GET /opensharing/authorize` whose it is, fresh, on every request. `opensharing.admin.principals`
 is still how `catalog.type=local` works — the file catalog has no identity provider to delegate to.
 
 Or from source:
@@ -104,7 +104,7 @@ The host supplies two integration points, both required:
    mode's `catalog.type=unity` uses, wrapped around that one `CatalogConnector` rather than opening
    a second connection to the same address: it asks the connector's own
    `CatalogConnector#authorize` whose bearer token a provider-admin request carries, by delegating
-   to `UnityCatalogConnector`'s implementation of it (`POST /opensharing/authorize`). There is no
+   to `UnityCatalogConnector`'s implementation of it (`GET /opensharing/authorize`). There is no
    fallback to configured principals in embedded mode: nothing here is stored anywhere, so there is
    nothing to fall back to.
 
@@ -144,7 +144,7 @@ either way — two calls carry the whole story, both real HTTP requests through 
 chain exactly as if they'd arrived on UC's public port:
 
 - **A provider-admin write** (creating a share, adding a table, granting a permission, ...)
-  presents the live caller's own bearer token to UC's `POST /opensharing/authorize`, which returns
+  presents the live caller's own bearer token to UC's `GET /opensharing/authorize`, which returns
   `{user_id, user_name, authorized}`. `CREATE_SHARE` / `CREATE_RECIPIENT` are asked only for the two
   operations that create a new, otherwise-unowned object; every other request resolves identity
   only, with OpenSharing enforcing its own ownership rule (only a share's or recipient's owner may
@@ -248,7 +248,7 @@ also no new implementation needed: `OpenSharingLifecycle` wraps the existing
 `io.opensharing.principal.CatalogAuthorizingIdentityResolver` around the same `UnityCatalogConnector`
 instance as the connector above, so both go through one connection to UC rather than opening two —
 the resolver itself calls nothing but `CatalogConnector#authorize`, which `UnityCatalogConnector`
-implements as `POST /opensharing/authorize`.
+implements as `GET /opensharing/authorize`.
 
 ## Spring wiring
 

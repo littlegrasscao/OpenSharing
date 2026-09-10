@@ -102,7 +102,7 @@ public final class UnityCatalogConnector implements CatalogConnector {
   /**
    * {@inheritDoc}
    *
-   * <p>Delegates to {@code POST /opensharing/authorize} — the one call this connector makes with no
+   * <p>Delegates to {@code GET /opensharing/authorize} — the one call this connector makes with no
    * {@link CatalogCaller} of its own to authenticate as, because producing one is the point.
    */
   @Override

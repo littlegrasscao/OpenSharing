@@ -257,7 +257,7 @@ The port matters twice over: the catalog is on $UC_PORT, which is where this ser
 otherwise sit, and the activation url a recipient is handed has to point back here.
 
 No admin principal to configure: with catalog.type=unity, every provider-admin request is
-authenticated by asking the catalog itself (POST \$UC_URI/opensharing/authorize) whose token this
+authenticated by asking the catalog itself (GET \$UC_URI/opensharing/authorize) whose token this
 is — the same call standalone mode has always made for asset resolution, now also made for
 identity. \$UC_TOKEN (\$UC_ADMIN's own token, from demo.env) is what demo-unity.sh presents as
 PROVIDER_TOKEN; this requires a Unity Catalog build carrying that endpoint (not yet in a release

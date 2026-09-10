@@ -146,7 +146,7 @@ class UnityCatalogConnectorTest {
   @Test
   void authorizeResolvesTheTokensPrincipalWhenTheCatalogSaysYes() {
     catalog.answers(
-        "POST /opensharing/authorize",
+        "GET /opensharing/authorize",
         200,
         """
         {"user_id": "alice-id", "user_name": "alice@example.com", "authorized": true}
@@ -163,7 +163,7 @@ class UnityCatalogConnectorTest {
   @Test
   void authorizeRefusesWhenTheCatalogSaysNoToThePrivilege() {
     catalog.answers(
-        "POST /opensharing/authorize",
+        "GET /opensharing/authorize",
         200,
         """
         {"user_id": "mallory-id", "user_name": "mallory@example.com", "authorized": false}
@@ -177,7 +177,7 @@ class UnityCatalogConnectorTest {
   @Test
   void authorizeRefusesWhenTheCatalogDoesNotRecognizeTheToken() {
     catalog.answers(
-        "POST /opensharing/authorize",
+        "GET /opensharing/authorize",
         401,
         """
         {"error_code": "UNAUTHENTICATED", "message": "Invalid access token"}
@@ -194,7 +194,7 @@ class UnityCatalogConnectorTest {
   @Test
   void authorizeRefusesWhenTheCatalogsOwnAuthorizationLayerRejectsOutright() {
     catalog.answers(
-        "POST /opensharing/authorize",
+        "GET /opensharing/authorize",
         403,
         """
         {"error_code": "PERMISSION_DENIED", "message": "User not allowed: mallory@example.com"}

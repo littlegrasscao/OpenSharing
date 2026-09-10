@@ -140,10 +140,10 @@ final class UnityCatalogClient {
             .timeout(requestTimeout)
             .header("Accept", "application/json")
             .header("Authorization", "Bearer " + bearerToken)
-            .POST(HttpRequest.BodyPublishers.noBody())
+            .GET()
             .build();
     try {
-      return Optional.of(send(request, AuthorizeResult.class, "POST /opensharing/authorize"));
+      return Optional.of(send(request, AuthorizeResult.class, "GET /opensharing/authorize"));
     } catch (UnityApiException e) {
       if (e.status() == 401 || e.status() == 403) {
         return Optional.empty();
