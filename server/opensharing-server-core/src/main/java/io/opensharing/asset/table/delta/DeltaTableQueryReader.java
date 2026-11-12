@@ -21,7 +21,6 @@ import io.delta.kernel.internal.actions.DeletionVectorDescriptor;
 import io.delta.kernel.internal.actions.Metadata;
 import io.delta.kernel.internal.actions.Protocol;
 import io.delta.kernel.internal.actions.RemoveFile;
-import io.delta.kernel.internal.checksum.CRCInfo;
 import io.delta.kernel.internal.fs.Path;
 import io.delta.kernel.internal.util.FileNames;
 import io.delta.kernel.internal.util.Utils;
@@ -142,11 +141,12 @@ public class DeltaTableQueryReader {
       Snapshot snapshot = DeltaSnapshots.open(session, version, timestamp);
       SnapshotImpl impl = (SnapshotImpl) snapshot;
       out.requireReaderFeatures(impl.getProtocol());
+      // Like the reference server: files carry the snapshot's version only for a version or
+      // timestamp query, never a timestamp, and metaData carries neither.
       Long fileVersion = historical ? snapshot.getVersion() : null;
-      Long fileTimestamp = historical ? snapshot.getTimestamp(session.engine()) : null;
       out.begin(snapshot.getVersion());
       out.protocol(impl.getProtocol(), null);
-      out.metadata(impl.getMetadata(), fileVersion, DeltaSnapshots.crcFor(impl));
+      out.metadata(impl.getMetadata(), null);
 
       long numRecords = 0;
       ScanBuilder builder = snapshot.getScanBuilder();
@@ -165,7 +165,7 @@ public class DeltaTableQueryReader {
               if (limitHint != null && numRecords >= limitHint) {
                 break files;
               }
-              numRecords += out.snapshotFile(rows.next(), fileVersion, fileTimestamp);
+              numRecords += out.snapshotFile(rows.next(), fileVersion, null);
             }
           }
         }
@@ -326,7 +326,7 @@ public class DeltaTableQueryReader {
                   && header.getVersion() == range.start()
               ? header.getVersion()
               : null);
-      out.metadata(header.getMetadata(), header.getVersion(), DeltaSnapshots.crcFor(header));
+      out.metadata(header.getMetadata(), header.getVersion());
       try {
         for (FileStatus file : commitFiles) {
           if (range.changeDataFeed()) {
@@ -387,7 +387,7 @@ public class DeltaTableQueryReader {
         throw changeDataNotRecorded(version, range.start(), range.end());
       }
       if (range.includeHistoricalMetadata() && later) {
-        out.metadata(commit.metadata, version, null);
+        out.metadata(commit.metadata, version);
       }
     }
     List<ChangeFile> files = commit.files;
@@ -534,16 +534,9 @@ public class DeltaTableQueryReader {
       sink.line(TableActions.protocol(protocol, version, format));
     }
 
-    /** {@code crc} supplies the table size and file count; null omits them. */
-    void metadata(Metadata metadata, Long version, CRCInfo crc) {
-      sink.line(
-          TableActions.metadata(
-              metadata,
-              table,
-              version,
-              crc == null ? null : crc.getTableSizeBytes(),
-              crc == null ? null : crc.getNumFiles(),
-              format));
+    /** {@code version} is null for snapshot and metadata responses, set for a CDF historical one. */
+    void metadata(Metadata metadata, Long version) {
+      sink.line(TableActions.metadata(metadata, table, version, format));
     }
 
     /**
@@ -780,7 +773,7 @@ public class DeltaTableQueryReader {
         }
       } else if (!row.isNullAt(columns.metadata())) {
         if (later) {
-          out.metadata(Metadata.fromRow(row.getStruct(columns.metadata())), version, null);
+          out.metadata(Metadata.fromRow(row.getStruct(columns.metadata())), version);
         }
       } else if (!row.isNullAt(columns.add())) {
         out.changeFile(
